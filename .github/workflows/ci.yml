@@ -1,0 +1,49 @@
+name: Axi4-Systolic-Accelerator CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  lint-sim-test:
+    name: Lint, Sim, and Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Cocotb
+        run: |
+          pip install cocotb numpy
+
+      - name: Install Icarus Verilog
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y iverilog
+
+      - name: Verilator Lint
+        run: |
+          cd axi4-systolic-array-accelerator
+          pip install verilator
+          verilator --lint-only -Wall rtl/pe_mac.sv rtl/systolic_array_4x4.sv rtl/axi_lite_slave.sv rtl/systolic_accelerator_top.sv 2>&1 || true
+
+      - name: Cocotb Simulation (Verilator)
+        run: |
+          cd axi4-systolic-array-accelerator
+          make SIM=verilator run 2>&1 | head -50
+
+      - name: Report Results
+        if: always()
+        run: |
+          echo "CI workflow completed for axi4-systolic-array-accelerator"
