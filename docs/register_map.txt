@@ -1,0 +1,66 @@
+# Register Map — axi4-systolic-array-accelerator
+# Parameterized: N=4, IN_W=8, ACC_W=32
+# All offsets are WORD (32-bit) aligned unless noted.
+# Byte offsets can be computed as offset * 4.
+
+# == CTRL REGISTER (0x00) ==
+# Write-1-to-pulse (W1P) bits. Self-clearing START.
+# After DONE is sticky-cleared on next WRITE to CTRL.
+# After CLR_ACC asserts, accumulators are cleared on the next FEED cycle.
+# After SOFT_RST asserts, all state (PE accums, FSM, result_regs) is reset.
+# IRQ_EN enables the irq output pulse (active-high, one cycle, asserted with DONE).
+CTRL = 32'h00
+CTRL_START      = 1 << 0   # Write 1 to start, pulse self-clears
+CTRL_CLR_ACC    = 1 << 1   # Write 1 to clear accumulators (pulsed)
+CTRL_SOFT_RST   = 1 << 2   # Write 1 to full reset (pulsed)
+CTRL_IRQ_EN     = 1 << 3   # Enable irq output pulse
+
+# == STATUS REGISTER (0x04) ==
+# Read-only. BUSY is cleared one cycle after DONE is stuck high.
+# DONE is write-1-to-clear (W1C). Writing 1 clears it; reading returns current value.
+# ERR is write-1-to-clear for captured AXI decode errors (e.g. unmapped address).
+STATUS = 32'h04
+STATUS_BUSY     = 1 << 0   # 1 = FEED or DRAIN in progress
+STATUS_DONE     = 1 << 1   # 1 = computation complete (sticky until W1C)
+STATUS_ERR      = 1 << 2   # 1 = AXI protocol error captured
+
+# == LEN REGISTER (0x08) ==
+# FEED runs for exactly this many cycles. 
+# For a K×N tile where the array is N×N: LEN = K (the K dimension size).
+# Must be > 0. When FEED cycle count reaches LEN, FSM transitions to DRAIN.
+LEN = 32'h08
+# For a full 4×4 matrix multiply (A is 4×4, B is 4×4): LEN = 4 (or 16 depending on tiling strategy)
+# Default for square 4×4: LEN = 4 (one tile of the accumulation)
+
+# == ACTIVATION BUFFER WINDOW (0x10) ==
+# Holds N*N INT8 activation values, packed 4 bytes per 32-bit word.
+# Row-major: A[r][c] occupies byte at position (r*N+c)*4 within the 32-bit word.
+# Byte enable (WSTRB) selects which of the 4 bytes are written.
+# Total window size: N*N bytes = 16 bytes for N=4.
+# Launched over FEED cycles: one row (N values) per cycle, or one value per cycle depending on style.
+ACT_BUF = 32'h10
+# For N=4, 16 bytes total. Typical burst: write 4 words (16 bytes) over 4 FEED cycles.
+
+# == WEIGHT BUFFER WINDOW (0x50) ==
+# Holds N*N INT8 weight values, packed 4 bytes per 32-bit word.
+# Row-major: B[k][c] occupies byte at position (k*N+c)*4 within the 32-bit word.
+# Total window size: N*N bytes = 16 bytes for N=4.
+# Launched over FEED cycles: one column (N values) per cycle, or one value per cycle.
+WT_BUF = 32'h50
+# For N=4, 16 bytes total. Typical burst: write 4 words (16 bytes) over 4 FEED cycles.
+
+# == RESULT WINDOW (0x100) ==
+# Read-only. Holds N*N INT32 accumulation results, one 32-bit register per PE.
+# Result[r][c] is the accumulated partial product C[r][c] = sum_k A[r][k]*B[k][c].
+# Register addresses: 0x100 + r*4 for result row r (4 bytes each).
+# Read via AXI4-Lite slave using ARADDR = 0x100 + r*4.
+RESULT = 32'h100
+# For N=4: 16 registers from 0x100 to 0x13C (0x100, 0x104, 0x108, ..., 0x13C)
+
+# == Summary for N=4 ==
+# 0x00 CTRL   - Control (START/CLR_ACC/SOFT_RST/IRQ_EN)
+# 0x04 STATUS - Status (BUSY/DONE/ERR)
+# 0x08 LEN    - FEED cycle count
+# 0x10 ACT_BUF- Activation buffer (16 bytes, 4 words)
+# 0x50 WT_BUF - Weight buffer (16 bytes, 4 words)
+# 0x100 RESULT- Result window (16 × 32-bit registers, C00..C33)

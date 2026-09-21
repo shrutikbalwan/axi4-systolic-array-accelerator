@@ -1,0 +1,10 @@
+{
+  "DESIGN_NAME": "systolic_accelerator_top",
+  "VERILOG_FILES": "dir::../rtl/*.sv",
+  "CLOCK_PORT": "clk",
+  "CLOCK_PERIOD": 10.0,
+  "FP_SIZING": "relative",
+  "CORE_UTIL": 45,
+  "PL_TARGET_DENSITY": 0.50,
+  "SYNTH_STRATEGY": "SYN"
+}
