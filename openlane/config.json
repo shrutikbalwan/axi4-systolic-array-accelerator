@@ -1,10 +1,26 @@
 {
-  "DESIGN_NAME": "systolic_accelerator_top",
-  "VERILOG_FILES": "dir::../rtl/*.sv",
-  "CLOCK_PORT": "clk",
-  "CLOCK_PERIOD": 10.0,
-  "FP_SIZING": "relative",
-  "CORE_UTIL": 45,
-  "PL_TARGET_DENSITY": 0.50,
-  "SYNTH_STRATEGY": "SYN"
+    "meta": {
+        "version": 2,
+        "flow": "Classic"
+    },
+    "DESIGN_NAME": "systolic_accel_top",
+    "VERILOG_FILES": [
+        "dir::../rtl/reset_sync.sv",
+        "dir::../rtl/pe_mac.sv",
+        "dir::../rtl/systolic_array.sv",
+        "dir::../rtl/axi_lite_slave.sv",
+        "dir::../rtl/accel_ctrl.sv",
+        "dir::../rtl/systolic_accel_top.sv"
+    ],
+    "SYNTH_PARAMETERS": ["N=4", "KMAX=16"],
+    "PDK": "sky130A",
+    "STD_CELL_LIBRARY": "sky130_fd_sc_hd",
+    "CLOCK_PORT": "aclk",
+    "CLOCK_PERIOD": 10.0,
+    "PNR_SDC_FILE": "dir::../constraints/design.sdc",
+    "SIGNOFF_SDC_FILE": "dir::../constraints/design.sdc",
+    "FP_SIZING": "relative",
+    "FP_CORE_UTIL": 40,
+    "FP_ASPECT_RATIO": 1,
+    "PL_TARGET_DENSITY_PCT": 50
 }
