@@ -1,0 +1,11 @@
+# simulation outputs
+sim_build/
+obj_dir/
+results*.xml
+*.vcd
+*.fst
+__pycache__/
+*.pyc
+# synthesis / flow outputs
+build/
+runs/

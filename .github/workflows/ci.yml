@@ -1,49 +1,43 @@
-name: Axi4-Systolic-Accelerator CI
+name: ci
 
 on:
   push:
-    branches: [ master ]
   pull_request:
-    branches: [ master ]
 
 jobs:
-  lint-sim-test:
-    name: Lint, Sim, and Test
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash
-
+  checks:
+    name: lint, synth, simulate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      # Verilator, Icarus, Yosys and a Python with cocotb 2.1, pinned to the
+      # release the design was verified with.
+      - uses: YosysHQ/setup-oss-cad-suite@v3
         with:
-          python-version: "3.11"
+          version: "2026-09-22"
 
-      - name: Install Cocotb
+      # The suite's tools run its bundled Python; install the test deps there.
+      - name: Python test dependencies
+        run: tabbypip install numpy cocotbext-axi
+
+      - name: Tool versions
         run: |
-          pip install cocotb numpy
+          verilator --version
+          iverilog -V 2>&1 | head -1
+          yosys -V
+          cocotb-config --version
 
-      - name: Install Icarus Verilog
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y iverilog
+      - name: Lint, array regression, synthesis, cocotb regression
+        run: scripts/run_checks.sh
 
-      - name: Verilator Lint
-        run: |
-          cd axi4-systolic-array-accelerator
-          pip install verilator
-          verilator --lint-only -Wall rtl/pe_mac.sv rtl/systolic_array_4x4.sv rtl/axi_lite_slave.sv rtl/systolic_accelerator_top.sv 2>&1 || true
-
-      - name: Cocotb Simulation (Verilator)
-        run: |
-          cd axi4-systolic-array-accelerator
-          make SIM=verilator run 2>&1 | head -50
-
-      - name: Report Results
+      - name: Upload logs
         if: always()
-        run: |
-          echo "CI workflow completed for axi4-systolic-array-accelerator"
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs
+          path: |
+            build/*.log
+            build/*.stat
+            sim/results_*.xml
