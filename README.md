@@ -126,7 +126,9 @@ the array: `accel_ctrl` packs each feed vector into whole 32-bit AXI words.
 `systolic_array` has no such constraint and is legal, and tested, at N = 2.
 The full design (`systolic_accel_top`) refuses to elaborate at N = 2 on purpose.
 
-**Flip-flop accounting** (N = 4, KMAX = 16, flattened netlist, 2,053 total):
+**Flip-flop accounting.** 2,053 flops, in the **flattened** netlist, at
+N = 4, KMAX = 16. Flattened and hierarchical counts differ, so the flow matters
+when comparing: the hierarchical netlist reports 2,056.
 
 | State | Flops |
 |---|---|
@@ -138,9 +140,9 @@ The full design (`systolic_accel_top`) refuses to elaborate at N = 2 on purpose.
 | Reset synchroniser | 2 |
 
 There are no result registers; the C window reads the accumulators directly.
-The hierarchical netlist has 2,056. Flattening removes 3: the two AW address
-LSBs (never used) and one RRESP bit (reads return only OKAY or DECERR, so
-RRESP[0] always equals RRESP[1]).
+The 3 flops flattening removes are the two AW address LSBs (never used) and one
+RRESP bit (reads return only OKAY or DECERR, so RRESP[0] always equals
+RRESP[1]).
 
 **Mutation testing.** `scripts/mutants.py` seeds 20 known bugs (the original
 design's bugs among them) and `scripts/run_mutants.sh` checks the regression
@@ -195,3 +197,10 @@ is why mutants run at two sizes.
 * Verilator will not build under a filesystem path containing a space (its
   generated makefiles refuse to). Clone into a path without spaces. GitHub
   Actions runner paths (`/home/runner/work/...`) are unaffected.
+
+## License
+
+[Apache License 2.0](LICENSE).
+
+There are no per-file license headers: a half-applied header convention is
+worse than none. The LICENSE file covers the repository.
