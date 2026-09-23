@@ -27,30 +27,24 @@ module ml_int8_packer (
     logic [31:0] pack_q;
     logic [1:0] lane_q;
     logic out_valid_q, out_last_q;
-    logic signed [7:0] quantized_value;
-    logic signed [63:0] scaled_value;
-    logic signed [31:0] shifted_value;
-    logic signed [31:0] sum_value;
+    // Keep the arithmetic in continuous assignments rather than an
+    // always_comb block. Icarus otherwise emits a constant-select warning for
+    // the sign-extension bits, even though the RTL is functionally correct.
+    wire signed [31:0] sum_value = $signed(in_data) + $signed(bias);
+    wire signed [63:0] sum_ext = {{32{sum_value[31]}}, sum_value};
+    wire signed [63:0] scale_ext = {{32{scale_mult[31]}}, scale_mult};
+    wire signed [63:0] scaled_value = sum_ext * scale_ext;
+    wire signed [31:0] shifted_value = scaled_value >>> scale_shift;
+    wire signed [7:0] quantized_value =
+        (relu_en && (shifted_value < 0)) ? 8'sd0 :
+        (shifted_value > 127) ? 8'sd127 :
+        (shifted_value < -128) ? -8'sd128 :
+        shifted_value;
 
-    always_comb begin
-        sum_value = $signed(in_data) + $signed(bias);
-        scaled_value = $signed({{32{sum_value[31]}}, sum_value}) *
-                       $signed({{32{scale_mult[31]}}, scale_mult});
-        shifted_value = scaled_value >>> scale_shift;
-        if (relu_en && (shifted_value < 0))
-            quantized_value = 8'sd0;
-        else if (shifted_value > 127)
-            quantized_value = 8'sd127;
-        else if (shifted_value < -128)
-            quantized_value = -8'sd128;
-        else
-            quantized_value = shifted_value[7:0];
-
-        in_ready = !out_valid_q || out_ready;
-        out_valid = out_valid_q;
-        out_data = pack_q;
-        out_last = out_valid_q && out_last_q;
-    end
+    assign in_ready = !out_valid_q || out_ready;
+    assign out_valid = out_valid_q;
+    assign out_data = pack_q;
+    assign out_last = out_valid_q && out_last_q;
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
