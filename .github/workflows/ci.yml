@@ -110,12 +110,16 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      # OSS CAD Suite ships version-matched yosys, sby, yosys-smtbmc and the
+      # SMT solvers (yices, z3, boolector). Cloning the sby repo alone does not
+      # put an `sby` executable on PATH, and apt's yosys lacks yices.
       - name: Install formal tools
+        uses: YosysHQ/setup-oss-cad-suite@v3
+
+      - name: Show formal tool versions
         run: |
-          sudo apt-get update
-          sudo apt-get install -y yosys boolector
-          git clone --depth 1 https://github.com/YosysHQ/sby.git /tmp/sby
-          echo "/tmp/sby" >> "$GITHUB_PATH"
+          yosys -V
+          sby --help | head -n 1
 
       - name: Prove AXI-Lite response properties
         working-directory: formal
