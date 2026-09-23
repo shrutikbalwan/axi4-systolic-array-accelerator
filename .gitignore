@@ -8,4 +8,8 @@ __pycache__/
 *.pyc
 # synthesis / flow outputs
 build/
+build_*/
+tools/
 runs/
+formal/axi_lite_slave/
+formal/ping_pong_bank_manager/

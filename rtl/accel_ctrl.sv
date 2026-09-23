@@ -78,6 +78,12 @@ module accel_ctrl #(
     localparam logic [11:0] OFF_LEN    = 12'h008;
     localparam logic [11:0] OFF_INFO   = 12'h00C;
     localparam logic [11:0] OFF_CYCLES = 12'h010;
+    // Keep the historical 0x014..0x01C holes DECERR-compatible. Performance
+    // counters live in the next register block so existing software and tests
+    // retain the original address map.
+    localparam logic [11:0] OFF_ACTIVE = 12'h020;
+    localparam logic [11:0] OFF_MAC_LO = 12'h024;
+    localparam logic [11:0] OFF_MAC_HI = 12'h028;
 
     // The single place byte offsets become word indices.
     localparam logic [9:0] W_CTRL   = OFF_CTRL[11:2];
@@ -85,6 +91,9 @@ module accel_ctrl #(
     localparam logic [9:0] W_LEN    = OFF_LEN[11:2];
     localparam logic [9:0] W_INFO   = OFF_INFO[11:2];
     localparam logic [9:0] W_CYCLES = OFF_CYCLES[11:2];
+    localparam logic [9:0] W_ACTIVE = OFF_ACTIVE[11:2];
+    localparam logic [9:0] W_MAC_LO = OFF_MAC_LO[11:2];
+    localparam logic [9:0] W_MAC_HI = OFF_MAC_HI[11:2];
 
     localparam logic [1:0] RESP_OKAY   = 2'b00;
     localparam logic [1:0] RESP_SLVERR = 2'b10;
@@ -164,6 +173,10 @@ module accel_ctrl #(
     logic [BUF_IDX_W-1:0]  feed_base;   // = feed_k * WPR, maintained incrementally
     logic [DRAIN_W-1:0]    drain_cnt;
     logic [31:0]           cycles;      // cycles of the last run, START to DONE
+    logic [31:0]           active_cycles; // FEED + DRAIN cycles of the last run
+    logic [63:0]           mac_count;    // useful N*N MACs per FEED cycle
+
+    localparam logic [63:0] MACS_PER_FEED = N * N;
 
     logic [31:0] a_mem [BUF_WORDS];
     logic [31:0] b_mem [BUF_WORDS];
@@ -192,7 +205,9 @@ module accel_ctrl #(
                 end else if (wr_word == W_LEN) begin
                     if (busy) reg_wr_resp = RESP_SLVERR;   // LEN is locked during a run
                     else      we_len      = reg_wr_en;
-                end else if (wr_word == W_INFO || wr_word == W_CYCLES) begin
+                end else if (wr_word == W_INFO || wr_word == W_CYCLES ||
+                             wr_word == W_ACTIVE || wr_word == W_MAC_LO ||
+                             wr_word == W_MAC_HI) begin
                     reg_wr_resp = RESP_SLVERR;             // read-only
                 end else begin
                     reg_wr_resp = RESP_DECERR;
@@ -235,6 +250,8 @@ module accel_ctrl #(
             feed_base <= '0;
             drain_cnt <= '0;
             cycles    <= '0;
+            active_cycles <= '0;
+            mac_count <= '0;
         end else begin
             // Configuration writes
             if (ctrl_lane) irq_en <= reg_wr_data[3];
@@ -265,6 +282,8 @@ module accel_ctrl #(
                                 state  <= S_CLEAR;
                                 done   <= 1'b0;
                                 cycles <= 32'd0;
+                                active_cycles <= 32'd0;
+                                mac_count <= 64'd0;
                             end else begin
                                 err <= 1'b1;
                             end
@@ -278,6 +297,8 @@ module accel_ctrl #(
                     end
 
                     S_FEED: begin
+                        active_cycles <= active_cycles + 32'd1;
+                        mac_count <= mac_count + MACS_PER_FEED;
                         if (feed_k == len - 16'd1) begin
                             state     <= S_DRAIN;
                             drain_cnt <= '0;
@@ -288,6 +309,7 @@ module accel_ctrl #(
                     end
 
                     default: begin  // S_DRAIN
+                        active_cycles <= active_cycles + 32'd1;
                         if (drain_cnt == DRAIN_W'(DRAIN_CYCLES - 1)) begin
                             state <= S_IDLE;
                             done  <= 1'b1;
@@ -352,6 +374,9 @@ module accel_ctrl #(
                 else if (rd_word == W_LEN)    reg_rd_data = {16'd0, len};
                 else if (rd_word == W_INFO)   reg_rd_data = {16'(KMAX), 8'(IN_W), 8'(N)};
                 else if (rd_word == W_CYCLES) reg_rd_data = cycles;
+                else if (rd_word == W_ACTIVE) reg_rd_data = active_cycles;
+                else if (rd_word == W_MAC_LO) reg_rd_data = mac_count[31:0];
+                else if (rd_word == W_MAC_HI) reg_rd_data = mac_count[63:32];
                 else                          reg_rd_resp = RESP_DECERR;
             end
             WIN_A: begin

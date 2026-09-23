@@ -1,0 +1,14 @@
+[options]
+mode prove
+depth 20
+
+[engines]
+smtbmc
+
+[script]
+read -formal axi_lite_slave.sv axi_lite_slave_formal.sv
+prep -top axi_lite_slave_formal
+
+[files]
+../rtl/axi_lite_slave.sv
+axi_lite_slave_formal.sv

@@ -15,6 +15,9 @@ STATUS = 0x0004
 LEN = 0x0008
 INFO = 0x000C
 CYCLES = 0x0010
+ACTIVE_CYCLES = 0x0020
+MAC_COUNT_LO = 0x0024
+MAC_COUNT_HI = 0x0028
 A_BASE = 0x1000
 B_BASE = 0x2000
 C_BASE = 0x3000
@@ -110,3 +113,10 @@ class Accel:
         c = await self.read_c()
         await self.wr_ok(STATUS, STATUS_DONE)
         return c
+
+    async def performance(self):
+        """Return counters from the most recently completed run."""
+        active = await self.rd_ok(ACTIVE_CYCLES)
+        mac_lo = await self.rd_ok(MAC_COUNT_LO)
+        mac_hi = await self.rd_ok(MAC_COUNT_HI)
+        return {"active_cycles": active, "mac_count": mac_lo | (mac_hi << 32)}

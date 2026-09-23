@@ -15,9 +15,9 @@ from cocotb.triggers import ReadOnly, RisingEdge
 from cocotbext.axi import AxiLiteBus, AxiLiteMaster
 
 from accel_host import (
-    A_BASE, B_BASE, C_BASE, CTRL, CTRL_CLR_ACC, CTRL_IRQ_EN, CTRL_SOFT_RST,
+    A_BASE, ACTIVE_CYCLES, B_BASE, C_BASE, CTRL, CTRL_CLR_ACC, CTRL_IRQ_EN, CTRL_SOFT_RST,
     CTRL_START, CYCLES, DECERR, INFO, LEN, OKAY, SLVERR, STATUS, STATUS_BUSY,
-    STATUS_DONE, STATUS_ERR, WINDOW, Accel, params, reference,
+    STATUS_DONE, STATUS_ERR, MAC_COUNT_HI, MAC_COUNT_LO, WINDOW, Accel, params, reference,
 )
 
 N, KMAX = params()
@@ -67,6 +67,9 @@ async def test_reset_values_and_info(dut):
     assert await acc.rd_ok(STATUS) == 0
     assert await acc.rd_ok(LEN) == 0
     assert await acc.rd_ok(CYCLES) == 0
+    assert await acc.rd_ok(ACTIVE_CYCLES) == 0
+    assert await acc.rd_ok(MAC_COUNT_LO) == 0
+    assert await acc.rd_ok(MAC_COUNT_HI) == 0
     info = await acc.rd_ok(INFO)
     assert info & 0xFF == N, f"INFO.N = {info & 0xFF}, build N = {N}"
     assert (info >> 8) & 0xFF == 8
@@ -123,7 +126,8 @@ async def test_decerr_and_slverr(dut):
 
     # Read-only registers reject writes and are unchanged
     info = await acc.rd_ok(INFO)
-    for addr in (INFO, CYCLES, C_BASE, C_BASE + 4 * (N * N - 1)):
+    for addr in (INFO, CYCLES, ACTIVE_CYCLES, MAC_COUNT_LO, MAC_COUNT_HI,
+                 C_BASE, C_BASE + 4 * (N * N - 1)):
         resp = await acc.wr(addr, 0x12345678)
         assert resp == SLVERR, f"write to RO 0x{addr:04x}: resp {resp}, want SLVERR"
     assert await acc.rd_ok(INFO) == info
@@ -343,6 +347,9 @@ async def test_latency_matches_schedule(dut):
         await acc.gemm(a, b)
         cycles = await acc.rd_ok(CYCLES)
         assert cycles == k + 2 * N, f"K={k}: CYCLES={cycles}, want {k + 2 * N}"
+        perf = await acc.performance()
+        assert perf["active_cycles"] == k + 2 * N - 1
+        assert perf["mac_count"] == N * N * k
 
 
 @cocotb.test()

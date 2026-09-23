@@ -1,0 +1,15 @@
+[options]
+mode prove
+depth 24
+
+[engines]
+smtbmc
+
+[script]
+read -formal -sv ping_pong_bank_manager.sv ping_pong_bank_manager_properties.sv ping_pong_bank_manager_formal.sv
+prep -top ping_pong_bank_manager_formal
+
+[files]
+../rtl/ping_pong_bank_manager.sv
+ping_pong_bank_manager_properties.sv
+ping_pong_bank_manager_formal.sv

@@ -7,7 +7,7 @@ them at run time from `INFO`.
 
 | Window | Base     | Contents                                  | Size (default)          |
 |--------|----------|-------------------------------------------|-------------------------|
-| REGS   | `0x0000` | control / status registers                | 5 registers             |
+| REGS   | `0x0000` | control / status / performance registers  | 9 registers             |
 | A      | `0x1000` | activation buffer, feed order, INT8       | `N*KMAX` bytes = 64 B   |
 | B      | `0x2000` | weight buffer, feed order, INT8           | `KMAX*N` bytes = 64 B   |
 | C      | `0x3000` | results, INT32, read-only                 | `N*N` words = 64 B      |
@@ -17,7 +17,7 @@ them at run time from `INFO`.
 | Access                                                       | Response       |
 |--------------------------------------------------------------|----------------|
 | mapped register or in-range buffer/result word               | `OKAY` (00)    |
-| write to a read-only register (`INFO`, `CYCLES`, C window)   | `SLVERR` (10)  |
+| write to a read-only register (`INFO`, `CYCLES`, performance, C window) | `SLVERR` (10)  |
 | write to `LEN`, the A window or the B window while `BUSY`    | `SLVERR` (10), no effect |
 | anything else (holes in REGS, past the end of a window)      | `DECERR` (11), reads return 0 |
 
@@ -61,6 +61,19 @@ Inner dimension `K` of the next run: FEED lasts `LEN` cycles. Legal values
 
 Clock cycles from START to DONE of the most recent run. Always `K + 2N`
 (1 CLEAR + K FEED + 2N-1 DRAIN); the regression checks this.
+
+### `0x020` ACTIVE_CYCLES (RO)
+
+Number of array-enabled cycles in the most recent run: `K + 2N - 1` (`K`
+feed cycles plus the drain wavefront). This separates controller overhead from
+compute activity.
+
+### `0x024` MAC_COUNT_LO (RO), `0x028` MAC_COUNT_HI (RO)
+
+The 64-bit useful-MAC count of the most recent run. The value is `N * N * K`;
+read the low word first and then the high word. It counts one signed INT8
+multiply-accumulate per processing element per feed cycle, not zero-padded
+drain cycles.
 
 ## Operand layout (feed order)
 
