@@ -35,7 +35,7 @@ jobs:
         run: |
           # ML tests use the runner Python; Cocotb is embedded in OSS CAD Suite.
           python -m pip install --upgrade pip numpy cocotb cocotbext-axi
-          tabbypy3 -m pip install --upgrade 'numpy<2'
+          tabbypy3 -m pip install --upgrade --pre 'cocotb>=2.1.0.dev3' cocotbext-axi 'numpy<2'
 
       - name: Run ML reference tests
         run: python -m unittest discover -s ml -p 'test_*.py'
