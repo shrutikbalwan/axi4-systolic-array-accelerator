@@ -2,10 +2,11 @@
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import ReadOnly, RisingEdge
+from cocotb.triggers import ReadOnly, RisingEdge, Timer
 
 
 async def write_reg(dut, addr, data, strobe=0xF):
+    await Timer(1, unit="ns")
     dut.reg_wr_addr.value = addr
     dut.reg_wr_data.value = data
     dut.reg_wr_strb.value = strobe
@@ -18,6 +19,7 @@ async def write_reg(dut, addr, data, strobe=0xF):
 
 
 async def read_reg(dut, addr):
+    await Timer(1, unit="ns")
     dut.reg_rd_addr.value = addr
     await ReadOnly()
     return int(dut.reg_rd_data.value), int(dut.reg_rd_resp.value)
@@ -29,6 +31,7 @@ async def test_descriptor_ml_registers_and_locking(dut):
     dut.rst_n.value = 0
     dut.reg_wr_en.value = 0
     dut.reg_wr_strb.value = 0
+    await Timer(1, unit="ns")
     dut.dma_busy.value = 0
     dut.dma_done.value = 0
     dut.dma_error.value = 0
@@ -38,6 +41,13 @@ async def test_descriptor_ml_registers_and_locking(dut):
     for _ in range(3):
         await RisingEdge(dut.clk)
     dut.rst_n.value = 1
+
+    tile_m, resp = await read_reg(dut, 0x20)
+    assert resp == 0 and tile_m == 4
+    tile_n, resp = await read_reg(dut, 0x24)
+    assert resp == 0 and tile_n == 4
+    tile_k, resp = await read_reg(dut, 0x28)
+    assert resp == 0 and tile_k == 16
 
     assert await write_reg(dut, 0x2C, 0xFFFFFFF0) == 0
     assert await write_reg(dut, 0x30, 0x00012345) == 0
@@ -69,6 +79,7 @@ async def test_descriptor_ml_registers_and_locking(dut):
     status, resp = await read_reg(dut, 0x04)
     assert resp == 0 and (status & 0x2) != 0
 
+    await Timer(1, unit="ns")
     dut.dma_busy.value = 0
     assert await write_reg(dut, 0x04, 0x2) == 0
     status, _ = await read_reg(dut, 0x04)

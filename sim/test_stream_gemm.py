@@ -48,6 +48,7 @@ async def test_contiguous_stream_gemm_with_edges(dut):
     dut.start_job.value = 0
 
     ai = bi = 0
+    input_cycles = 0
     for _cycle in range(5000):
         if not (ai < len(a_words) or bi < len(b_words)):
             break
@@ -60,6 +61,7 @@ async def test_contiguous_stream_gemm_with_edges(dut):
         if b_active:
             dut.b_in_data.value = b_words[bi]
         await RisingEdge(dut.clk)
+        input_cycles += 1
         if a_active and dut.a_in_ready.value:
             ai += 1
         if b_active and dut.b_in_ready.value:
@@ -72,10 +74,15 @@ async def test_contiguous_stream_gemm_with_edges(dut):
     await ReadOnly()
 
     result = []
+    first_output_cycle = None
+    output_cycles = 0
     for _cycle in range(20000):
         await RisingEdge(dut.clk)
         await ReadOnly()
+        output_cycles += 1
         if dut.c_out_valid.value and dut.c_out_ready.value:
+            if first_output_cycle is None:
+                first_output_cycle = output_cycles
             if not dut.c_out_data.value.is_resolvable:
                 raise AssertionError(f"unresolved output word {len(result)}")
             raw = int(dut.c_out_data.value)
@@ -86,4 +93,9 @@ async def test_contiguous_stream_gemm_with_edges(dut):
         raise AssertionError(f"output stream stalled after {len(result)} words")
 
     np.testing.assert_array_equal(np.asarray(result).reshape(m, n), a @ b)
+    assert ai == (m * k + 3) // 4
+    assert bi == (k * n + 3) // 4
+    assert len(result) == m * n
+    assert first_output_cycle is not None
+    assert output_cycles < 20000
     assert dut.error.value == 0

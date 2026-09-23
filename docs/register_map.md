@@ -93,6 +93,12 @@ each word, so feed vector `k` of an `N = 4` build is exactly one word.
 
 ## Software sequence
 
+The tiled descriptor path resets to the reference streamed GEMM shape:
+`TILE_M = 4`, `TILE_N = 4`, and `TILE_K = 16`. Software may override these
+fields before START; M/N tile values must remain multiples of four and fit the
+instantiated array. The streamed bridge derives row addressing from the
+programmed matrix dimensions, not from the physical maximum buffer strides.
+
 ```
 write A window (K*N bytes), B window (K*N bytes)
 write LEN   = K

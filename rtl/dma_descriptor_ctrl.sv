@@ -46,6 +46,13 @@ module dma_descriptor_ctrl (
     output wire        irq
 );
 
+    // The descriptor block targets the 4-lane INT8 stream contract by
+    // default. Software may override these fields before START, but a reset
+    // device is immediately usable with the reference 4x4x16 tile shape.
+    localparam logic [31:0] DEFAULT_TILE_M = 32'd4;
+    localparam logic [31:0] DEFAULT_TILE_N = 32'd4;
+    localparam logic [31:0] DEFAULT_TILE_K = 32'd16;
+
     localparam logic [9:0] W_CTRL   = 10'h000;
     localparam logic [9:0] W_STATUS = 10'h001;
     localparam logic [9:0] W_A_BASE = 10'h002;
@@ -69,6 +76,9 @@ module dma_descriptor_ctrl (
     localparam logic [1:0] RESP_SLVERR = 2'b10;
     localparam logic [1:0] RESP_DECERR = 2'b11;
 
+    logic done_q;
+    logic error_q;
+
     wire [9:0] wr_word = reg_wr_addr[11:2];
     wire [9:0] rd_word = reg_rd_addr[11:2];
     wire ctrl_wr       = reg_wr_en && (wr_word == W_CTRL);
@@ -79,9 +89,6 @@ module dma_descriptor_ctrl (
     assign dma_start = ctrl_wr && reg_wr_strb[0] && reg_wr_data[0] && !dma_busy;
     assign dma_abort = ctrl_wr && reg_wr_strb[0] && reg_wr_data[1];
     assign irq       = irq_en && (done_q || error_q);
-
-    logic done_q;
-    logic error_q;
 
     always_comb begin
         reg_wr_resp = RESP_OKAY;
@@ -103,9 +110,9 @@ module dma_descriptor_ctrl (
             matrix_m <= 0;
             matrix_n <= 0;
             matrix_k <= 0;
-            tile_m <= 0;
-            tile_n <= 0;
-            tile_k <= 0;
+            tile_m <= DEFAULT_TILE_M;
+            tile_n <= DEFAULT_TILE_N;
+            tile_k <= DEFAULT_TILE_K;
             post_bias <= 0;
             post_scale_mult <= 0;
             post_relu <= 1'b0;

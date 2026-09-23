@@ -45,6 +45,11 @@ module tile_scheduler #(
     logic [31:0] m_dim_q, n_dim_q, k_dim_q;
     logic [31:0] tm_q, tn_q, tk_q;
     logic        in_flight;
+    wire         bad_tile_cfg =
+        (tile_m_cfg == 0) || (tile_n_cfg == 0) || (tile_k_cfg == 0) ||
+        (tile_m_cfg > TILE_M) || (tile_n_cfg > TILE_N) ||
+        (tile_k_cfg > TILE_K) || (tile_m_cfg[1:0] != 0) ||
+        (tile_n_cfg[1:0] != 0);
 
     always_comb begin
         busy       = (m_dim_q != 0) && (n_dim_q != 0) && (k_dim_q != 0);
@@ -78,8 +83,7 @@ module tile_scheduler #(
             done <= 1'b0;
 
             if (start && !busy) begin
-                if ((matrix_m == 0) || (matrix_n == 0) || (matrix_k == 0) ||
-                    (tile_m_cfg == 0) || (tile_n_cfg == 0) || (tile_k_cfg == 0)) begin
+                if ((matrix_m == 0) || (matrix_n == 0) || (matrix_k == 0) || bad_tile_cfg) begin
                     error <= 1'b1;
                 end else begin
                     m_dim_q   <= matrix_m;
