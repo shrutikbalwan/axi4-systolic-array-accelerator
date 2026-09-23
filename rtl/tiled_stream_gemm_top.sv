@@ -50,6 +50,7 @@ module tiled_stream_gemm_top #(
     wire tile_b_valid, tile_b_ready, tile_b_last;
     wire [31:0] tile_c_data;
     wire tile_c_valid, tile_c_ready, tile_c_last;
+    wire controller_tile_done;
     logic start_q;
     logic [31:0] matrix_m_q, matrix_n_q, matrix_k_q;
     logic [31:0] tile_m_cfg_q, tile_n_cfg_q, tile_k_cfg_q;
@@ -103,6 +104,7 @@ module tiled_stream_gemm_top #(
         .tile_b_ready(tile_b_ready), .tile_b_last(tile_b_last),
         .tile_c_data(tile_c_data), .tile_c_valid(tile_c_valid),
         .tile_c_ready(tile_c_ready), .tile_c_last(tile_c_last),
+        .tile_done(controller_tile_done), .tile_last_k(tile_last_k),
         .compute_done(controller_done),
         .c_out_data(c_out_data), .c_out_valid(c_out_valid),
         .c_out_ready(c_out_ready), .c_out_last(c_out_last)
@@ -123,7 +125,8 @@ module tiled_stream_gemm_top #(
         .b_stream_data(tile_b_data), .b_stream_valid(tile_b_valid),
         .b_stream_ready(tile_b_ready), .b_stream_last(tile_b_last),
         .c_stream_data(tile_c_data), .c_stream_valid(tile_c_valid),
-        .c_stream_ready(tile_c_ready), .c_stream_last(tile_c_last)
+        .c_stream_ready(tile_c_ready), .c_stream_last(tile_c_last),
+        .tile_done(controller_tile_done)
     );
 
 endmodule

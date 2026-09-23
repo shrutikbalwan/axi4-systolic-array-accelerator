@@ -36,7 +36,7 @@ are parameters (`N` any multiple of 4); the defaults are `N = 4`, `KMAX = 16`.
 |---|---|
 | RTL: lint (`verilator -Wall`, warnings fatal), N = 4, 8, 12, 16, 32 | clean; 3 inline, reasoned waivers |
 | Array regression (SystemVerilog, Verilator), N = 2 ... 16 | passes; settling cycle = K + 2N - 1 exactly (see note on N = 2 below) |
-| cocotb regression, Icarus and Verilator, N = 4, 8 | core matrix passing; stream-GEMM integration still under refinement |
+| cocotb regression, Icarus and Verilator, N = 4, 8 | core matrix and contiguous stream-GEMM integration passing |
 | Mutation testing (20 seeded bugs, N = 4 and 8) | 20 / 20 killed |
 | Yosys generic synthesis | elaborates, no latches |
 | AXI4-Lite protocol | tested and formally checked for response behavior |

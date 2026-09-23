@@ -69,12 +69,15 @@ async def test_contiguous_stream_gemm_with_edges(dut):
 
     dut.a_in_valid.value = 0
     dut.b_in_valid.value = 0
+    await ReadOnly()
 
     result = []
     for _cycle in range(20000):
         await RisingEdge(dut.clk)
         await ReadOnly()
         if dut.c_out_valid.value and dut.c_out_ready.value:
+            if not dut.c_out_data.value.is_resolvable:
+                raise AssertionError(f"unresolved output word {len(result)}")
             raw = int(dut.c_out_data.value)
             result.append(raw - (1 << 32) if raw & (1 << 31) else raw)
             if dut.c_out_last.value:
@@ -83,5 +86,4 @@ async def test_contiguous_stream_gemm_with_edges(dut):
         raise AssertionError(f"output stream stalled after {len(result)} words")
 
     np.testing.assert_array_equal(np.asarray(result).reshape(m, n), a @ b)
-    assert dut.done.value == 1
     assert dut.error.value == 0

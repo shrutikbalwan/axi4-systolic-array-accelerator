@@ -24,6 +24,7 @@ module tiled_gemm_controller #(
     input  wire [31:0]             tile_k_cfg,
     output wire                    busy,
     output wire                    done,
+    output wire                    tile_done,
     output wire                    error,
 
     output wire                    tile_valid,
@@ -57,6 +58,7 @@ module tiled_gemm_controller #(
 
     assign busy  = sched_busy || chain_busy;
     assign done  = sched_done;
+    assign tile_done = chain_tile_done;
     assign error = sched_error || chain_error;
 
     tile_scheduler #(.TILE_M(ARRAY_N), .TILE_N(ARRAY_N), .TILE_K(KMAX)) u_sched (

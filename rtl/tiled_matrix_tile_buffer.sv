@@ -59,6 +59,8 @@ module tiled_matrix_tile_buffer #(
     input  wire                    tile_c_valid,
     output logic                    tile_c_ready,
     input  wire                    tile_c_last,
+    input  wire                    tile_done,
+    input  wire                    tile_last_k,
     input  wire                    compute_done,
 
     output logic [31:0]             c_out_data,
@@ -97,6 +99,7 @@ module tiled_matrix_tile_buffer #(
     logic [C_WORD_W-1:0] c_out_count;
     logic [31:0] tm_q, tn_q, tk_q;
     logic [31:0] tm_len_q, tn_len_q, tk_len_q;
+    logic        tile_last_k_q;
 
     logic signed [7:0] a_mem [0:MAX_M*MAX_K-1];
     logic signed [7:0] b_mem [0:MAX_K*MAX_N-1];
@@ -193,6 +196,7 @@ module tiled_matrix_tile_buffer #(
             tm_len_q       <= 0;
             tn_len_q       <= 0;
             tk_len_q       <= 0;
+            tile_last_k_q  <= 1'b0;
             launch_compute <= 1'b0;
             done           <= 1'b0;
             error          <= 1'b0;
@@ -220,7 +224,7 @@ module tiled_matrix_tile_buffer #(
                             for (load_lane = 0; load_lane < BYTES_PER_WORD; load_lane = load_lane + 1) begin
                                 byte_index = a_in_count * BYTES_PER_WORD + load_lane;
                                 if (byte_index < a_total_bytes)
-                                    a_mem[byte_index / MAX_K * MAX_K + (byte_index % MAX_K)] <=
+                                    a_mem[byte_index / k_q * MAX_K + (byte_index % k_q)] <=
                                         $signed(a_in_data[load_lane*8 +: 8]);
                             end
                             a_in_count <= a_in_count + 1'b1;
@@ -229,7 +233,7 @@ module tiled_matrix_tile_buffer #(
                             for (load_lane = 0; load_lane < BYTES_PER_WORD; load_lane = load_lane + 1) begin
                                 byte_index = b_in_count * BYTES_PER_WORD + load_lane;
                                 if (byte_index < b_total_bytes)
-                                    b_mem[byte_index / MAX_N * MAX_N + (byte_index % MAX_N)] <=
+                                    b_mem[byte_index / n_q * MAX_N + (byte_index % n_q)] <=
                                         $signed(b_in_data[load_lane*8 +: 8]);
                             end
                             b_in_count <= b_in_count + 1'b1;
@@ -252,6 +256,7 @@ module tiled_matrix_tile_buffer #(
                             tm_len_q <= tile_m_len;
                             tn_len_q <= tile_n_len;
                             tk_len_q <= tile_k_len;
+                            tile_last_k_q <= tile_last_k;
                             tile_word_count <= 0;
                             state <= S_SEND;
                         end
@@ -279,6 +284,10 @@ module tiled_matrix_tile_buffer #(
                             end else begin
                                 tile_c_count <= tile_c_count + 1'b1;
                             end
+                        end else if (tile_done && !tile_last_k_q) begin
+                            // Intermediate K reductions are accumulated in the
+                            // compute chain and intentionally emit no C words.
+                            state <= S_READY;
                         end
                     end
 
