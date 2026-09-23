@@ -1,49 +1,63 @@
-name: Axi4-Systolic-Accelerator CI
+name: ci
 
 on:
   push:
-    branches: [ master ]
   pull_request:
-    branches: [ master ]
+
+env:
+  # The OSS CAD Suite release the design was verified against. Pinning it means
+  # CI runs the same Verilator, Icarus, Yosys and cocotb as a local run.
+  OSS_CAD_SUITE_VERSION: "2026-09-22"
 
 jobs:
-  lint-sim-test:
-    name: Lint, Sim, and Test
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash
-
+  checks:
+    name: lint, synth, simulate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      # ~1 GB: cached, or every run spends minutes downloading it. The cache key
+      # includes the Python deps installed into the suite below.
+      - name: Cache OSS CAD Suite
+        id: cache-oss
+        uses: actions/cache@v4
         with:
-          python-version: "3.11"
+          path: ~/tools/oss-cad-suite
+          key: oss-cad-suite-linux-x64-${{ env.OSS_CAD_SUITE_VERSION }}-numpy-cocotbext-axi
 
-      - name: Install Cocotb
+      - name: Install OSS CAD Suite
+        if: steps.cache-oss.outputs.cache-hit != 'true'
         run: |
-          pip install cocotb numpy
+          mkdir -p ~/tools
+          stamp=$(echo "${OSS_CAD_SUITE_VERSION}" | tr -d '-')
+          url="https://github.com/YosysHQ/oss-cad-suite-build/releases/download/${OSS_CAD_SUITE_VERSION}/oss-cad-suite-linux-x64-${stamp}.tgz"
+          echo "$url"
+          curl -fsSL "$url" -o /tmp/oss-cad-suite.tgz
+          tar xzf /tmp/oss-cad-suite.tgz -C ~/tools
+          # The suite's tools run its own bundled Python; the tests need these.
+          ~/tools/oss-cad-suite/bin/tabbypip install numpy cocotbext-axi
 
-      - name: Install Icarus Verilog
+      - name: Add tools to PATH
+        run: echo "$HOME/tools/oss-cad-suite/bin" >> "$GITHUB_PATH"
+
+      - name: Tool versions
         run: |
-          sudo apt-get update
-          sudo apt-get install -y iverilog
+          verilator --version
+          iverilog -V 2>&1 | head -1
+          yosys -V
+          cocotb-config --version
+          tabbypy3 -c "import numpy, cocotbext.axi; print('numpy', numpy.__version__)"
 
-      - name: Verilator Lint
-        run: |
-          cd axi4-systolic-array-accelerator
-          pip install verilator
-          verilator --lint-only -Wall rtl/pe_mac.sv rtl/systolic_array_4x4.sv rtl/axi_lite_slave.sv rtl/systolic_accelerator_top.sv 2>&1 || true
+      - name: Lint, array regression, synthesis, cocotb regression
+        run: scripts/run_checks.sh
 
-      - name: Cocotb Simulation (Verilator)
-        run: |
-          cd axi4-systolic-array-accelerator
-          make SIM=verilator run 2>&1 | head -50
-
-      - name: Report Results
+      - name: Upload logs
         if: always()
-        run: |
-          echo "CI workflow completed for axi4-systolic-array-accelerator"
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs
+          path: |
+            build/*.log
+            build/*.stat
+            sim/results_*.xml

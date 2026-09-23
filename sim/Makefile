@@ -1,72 +1,59 @@
-# Makefile for Cocotb simulation of axi4-systolic-array-accelerator
-# Supports both Icarus Verilog (iverilog) and Verilator backends
+# cocotb 2.x makefile for the systolic accelerator.
+#
+#   make                          # top-level regression, Icarus, N=4 KMAX=16
+#   make SIM=verilator N=8        # same on Verilator, 8x8 array
+#   make TB=array N=8             # array-only regression
+#   make WAVES=1                  # dump waveforms (FST)
+#
+# Each (SIM, TB, N, KMAX) combination gets its own build directory, so a
+# parameter change can never silently reuse a stale model.
 
-# User can set SIM to "iverilog" or "verilator"
-SIM ?= verilator
+SIM          ?= icarus
+TB           ?= accel
+N            ?= 4
+KMAX         ?= 16
+TOPLEVEL_LANG = verilog
 
-# Design under test top module name
-TOPLEVEL := systolic_accelerator_top
+# Relative on purpose: make cannot handle spaces in absolute paths.
+RTL_DIR := ../rtl
 
-# Python test file(s)
-VERILOG_SOURCES := $(PWD)/rtl/axi_lite_slave.sv \
-                   $(PWD)/rtl/systolic_array_4x4.sv \
-                   $(PWD)/rtl/pe_mac.sv
+ifeq ($(TB),array)
+  COCOTB_TOPLEVEL     = systolic_array
+  COCOTB_TEST_MODULES = test_array
+  VERILOG_SOURCES     = $(RTL_DIR)/pe_mac.sv \
+                        $(RTL_DIR)/systolic_array.sv
+  PARAMS              = N
+else ifeq ($(TB),accel)
+  COCOTB_TOPLEVEL     = systolic_accel_top
+  COCOTB_TEST_MODULES = test_accel
+  VERILOG_SOURCES     = $(RTL_DIR)/reset_sync.sv \
+                        $(RTL_DIR)/pe_mac.sv \
+                        $(RTL_DIR)/systolic_array.sv \
+                        $(RTL_DIR)/axi_lite_slave.sv \
+                        $(RTL_DIR)/accel_ctrl.sv \
+                        $(RTL_DIR)/systolic_accel_top.sv
+  PARAMS              = N KMAX
+else
+  $(error TB must be "accel" or "array")
+endif
 
-# Cocotb include paths and libraries
-COCOTB_INC := $(shell python3 -c "import cocotb; print(cocotb.__path__[0])")
+SIM_BUILD := sim_build/$(SIM)_$(TB)_N$(N)_K$(KMAX)
 
-# Verilator-specific flags
-VERILATOR_FLAGS := --cc -O3 -Mdir sim_build
+# The tests read N / KMAX from the environment.
+export N KMAX
 
-# Icarus Verilog specific flags
-IVERILOG_FLAGS := -Wall
+ifeq ($(SIM),icarus)
+  COMPILE_ARGS += $(foreach p,$(PARAMS),-P$(COCOTB_TOPLEVEL).$(p)=$($(p)))
+else ifeq ($(SIM),verilator)
+  # Parameters go in COMPILE_ARGS: EXTRA_ARGS is also passed to the model binary.
+  COMPILE_ARGS += $(foreach p,$(PARAMS),-G$(p)=$($(p)))
+  ifeq ($(WAVES),1)
+    COMPILE_ARGS += --trace-fst
+  endif
+endif
 
-# Default target
-.PHONY: all clean run
+include $(shell cocotb-config --makefiles)/Makefile.sim
 
-all: sim
-
-# Verilator backend
-ifeq ($(SIM), verilator)
-    build_dir = sim_build
-    
-    # Compile Verilog sources with Verilator
-    $(build_dir)/V$(TOPLEVEL): $(VERILOG_SOURCES) $(wildcard sim/*.py)
-        mkdir -p $(build_dir)
-        verilator $(VERILATOR_FLAGS) \
-            --top-module $(TOPLEVEL) \
-            -s $(TOPLEVEL) \
-            $(VERILOG_SOURCES) \
-            --Mdir $(build_dir) \
-            --exe test_systolic.py
-    
-    # Run simulation
-    run: $(build_dir)/V$(TOPLEVEL)
-        cd $(build_dir) && make -j4 V$(TOPLEVEL)_tb
-        cd $(build_dir) && ./V$(TOPLEVEL)_tb
-    
-    clean:
-        rm -rf sim_build
-
-# Icarus Verilog backend
-else ifeq ($(SIM), iverilog)
-    build_dir = sim_build_iverilog
-    
-    # Compile Verilog sources with Icarus
-    $(build_dir)/$(TOPLEVEL): $(VERILOG_SOURCES)
-        mkdir -p $(build_dir)
-        iverilog $(IVERILOG_FLAGS) \
-            -o $(build_dir)/$(TOPLEVEL) \
-            $(VERILOG_SOURCES)
-    
-    # Run simulation with VVP
-    run: $(build_dir)/$(TOPLEVEL)
-        vvp $(build_dir)/$(TOPLEVEL)
-    
-    clean:
-        rm -rf sim_build_iverilog
-
-# Default: use verilator
-run: iverilog
-clean:
-    rm -rf sim_build sim_build_iverilog
+.PHONY: clean_all
+clean_all:
+	rm -rf sim_build results.xml *.fst *.vcd __pycache__
