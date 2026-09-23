@@ -26,11 +26,10 @@ jobs:
         uses: YosysHQ/setup-oss-cad-suite@v4
         with:
           github-token: ${{ github.token }}
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
+          # Cocotb is loaded by the OSS CAD Suite's embedded Python inside
+          # vvp. Install Cocotb into that same interpreter so the simulator
+          # does not mix the suite's PYTHONHOME with setup-python's site-packages.
+          python-override: true
 
       - name: Install verification dependencies
         run: python -m pip install --upgrade pip numpy cocotb cocotbext-axi
@@ -119,7 +118,7 @@ jobs:
 
       # OSS CAD Suite ships version-matched yosys, sby, yosys-smtbmc and the
       # SMT solvers (yices, z3, boolector). Cloning the sby repo alone does not
-      # put an `sby` executable on PATH, and apt's yosys lacks yices.
+      # put an sby executable on PATH, and apt's yosys lacks yices.
       - name: Install formal tools
         uses: YosysHQ/setup-oss-cad-suite@v4
         with:
