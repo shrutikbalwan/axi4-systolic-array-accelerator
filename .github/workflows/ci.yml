@@ -1,63 +1,103 @@
-name: ci
+name: accelerator-ci
 
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
-env:
-  # The OSS CAD Suite release the design was verified against. Pinning it means
-  # CI runs the same Verilator, Icarus, Yosys and cocotb as a local run.
-  OSS_CAD_SUITE_VERSION: "2026-09-22"
+permissions:
+  contents: read
 
 jobs:
-  checks:
-    name: lint, synth, simulate
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
+  software-and-rtl:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        n: [4, 8]
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out source
+        uses: actions/checkout@v4
 
-      # ~1 GB: cached, or every run spends minutes downloading it. The cache key
-      # includes the Python deps installed into the suite below.
-      - name: Cache OSS CAD Suite
-        id: cache-oss
-        uses: actions/cache@v4
+      - name: Install HDL tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y iverilog verilator yosys
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          path: ~/tools/oss-cad-suite
-          key: oss-cad-suite-linux-x64-${{ env.OSS_CAD_SUITE_VERSION }}-numpy-cocotbext-axi
+          python-version: '3.12'
 
-      - name: Install OSS CAD Suite
-        if: steps.cache-oss.outputs.cache-hit != 'true'
+      - name: Install verification dependencies
+        run: python -m pip install --upgrade pip numpy cocotb cocotbext-axi
+
+      - name: Run ML reference tests
+        run: python -m unittest discover -s ml -p 'test_*.py'
+
+      - name: Compile portable driver
+        run: gcc -std=c11 -Wall -Wextra -Werror -Isw -c sw/test_compile.c -o /tmp/driver_test.o
+
+      - name: Run core Cocotb regressions
+        working-directory: sim
+        env:
+          N: ${{ matrix.n }}
+          KMAX: 16
         run: |
-          mkdir -p ~/tools
-          stamp=$(echo "${OSS_CAD_SUITE_VERSION}" | tr -d '-')
-          url="https://github.com/YosysHQ/oss-cad-suite-build/releases/download/${OSS_CAD_SUITE_VERSION}/oss-cad-suite-linux-x64-${stamp}.tgz"
-          echo "$url"
-          curl -fsSL "$url" -o /tmp/oss-cad-suite.tgz
-          tar xzf /tmp/oss-cad-suite.tgz -C ~/tools
-          # The suite's tools run its own bundled Python; the tests need these.
-          ~/tools/oss-cad-suite/bin/tabbypip install numpy cocotbext-axi
+          make SIM=icarus TB=array
+          make SIM=icarus TB=accel
+          make SIM=icarus TB=tile
+          make SIM=icarus TB=scheduler
+          make SIM=icarus TB=chain
+          make SIM=icarus TB=tiled
+          make SIM=icarus TB=ml_core
+          make SIM=icarus TB=stream_gemm
+          make SIM=icarus TB=descriptor
+          make SIM=icarus TB=ml_packer
 
-      - name: Add tools to PATH
-        run: echo "$HOME/tools/oss-cad-suite/bin" >> "$GITHUB_PATH"
+      - name: Run Verilator array regression
+        working-directory: sim
+        env:
+          N: ${{ matrix.n }}
+          KMAX: 16
+        run: make SIM=verilator TB=array
 
-      - name: Tool versions
-        run: |
-          verilator --version
-          iverilog -V 2>&1 | head -1
-          yosys -V
-          cocotb-config --version
-          tabbypy3 -c "import numpy, cocotbext.axi; print('numpy', numpy.__version__)"
-
-      - name: Lint, array regression, synthesis, cocotb regression
-        run: scripts/run_checks.sh
-
-      - name: Upload logs
+      - name: Upload simulator artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: logs
+          name: cocotb-results-n${{ matrix.n }}
           path: |
-            build/*.log
-            build/*.stat
-            sim/results_*.xml
+            sim/results.xml
+            sim/sim_build/**/*.log
+
+  lint-and-synthesis:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install HDL tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y verilator yosys
+
+      - name: Lint connected tiled top
+        run: |
+          verilator --lint-only -Wall --quiet-stats \
+            -Wno-WIDTHTRUNC -Wno-WIDTHEXPAND -Wno-BLKSEQ \
+            -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM \
+            -GARRAY_N=4 -GMAX_M=64 -GMAX_N=64 -GMAX_K=64 \
+            rtl/pe_mac.sv rtl/systolic_array.sv rtl/ml_int8_packer.sv \
+            rtl/tile_scheduler.sv rtl/tile_accumulator.sv \
+            rtl/systolic_tile_adapter.sv rtl/tiled_compute_chain.sv \
+            rtl/tiled_gemm_controller.sv rtl/tiled_matrix_tile_buffer.sv \
+            rtl/tiled_stream_gemm_top.sv rtl/axi4_read_dma.sv \
+            rtl/axi4_write_dma.sv rtl/dma_descriptor_ctrl.sv \
+            rtl/tiled_dma_shell.sv rtl/tiled_axi4_gemm_top.sv \
+            --top-module tiled_axi4_gemm_top
+
+      - name: Generic synthesis smoke test
+        run: |
+          yosys -q -p 'read_verilog -sv rtl/pe_mac.sv rtl/systolic_array.sv rtl/reset_sync.sv rtl/ml_postprocess.sv rtl/ml_int8_packer.sv rtl/tile_scheduler.sv rtl/dual_bank_buffer.sv rtl/ping_pong_bank_manager.sv rtl/tile_accumulator.sv rtl/axi4_read_dma.sv rtl/axi4_write_dma.sv rtl/dma_descriptor_ctrl.sv rtl/systolic_tile_adapter.sv rtl/tiled_compute_chain.sv rtl/tiled_gemm_controller.sv rtl/tiled_matrix_tile_buffer.sv rtl/tiled_stream_gemm_top.sv rtl/tiled_dma_shell.sv rtl/tiled_axi4_gemm_top.sv rtl/axi_lite_slave.sv rtl/accel_ctrl.sv rtl/systolic_accel_top.sv; chparam -set N 4 systolic_accel_top; synth -top systolic_accel_top -flatten; check -assert'

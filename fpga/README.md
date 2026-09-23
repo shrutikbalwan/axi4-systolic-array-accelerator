@@ -23,6 +23,11 @@ The repository includes a generic 100 MHz XDC template in
 locations. Publish the board name, tool version, utilization, Fmax, and power
 with any measured result.
 
+The checked-in GitHub Actions flow validates the board-independent RTL and
+generic synthesis path on every push and pull request. It does not fabricate
+FPGA utilization or timing numbers: those require the selected vendor tools,
+board constraints, and a real implementation run.
+
 For ASIC-style timing exploration, use
 `openlane/config_tiled_axi4_gemm.json` with
 `constraints/tiled_axi4_gemm.sdc`; it targets the connected DMA/tiled/ML top

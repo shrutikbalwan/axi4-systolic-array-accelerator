@@ -1,5 +1,7 @@
 # axi4-systolic-array-accelerator
 
+[![CI](https://github.com/shrutikbalwan/axi4-systolic-array-accelerator/actions/workflows/ci.yml/badge.svg)](https://github.com/shrutikbalwan/axi4-systolic-array-accelerator/actions/workflows/ci.yml)
+
 A parameterised INT8 systolic-array GEMM accelerator with an AXI4-Lite control
 and data interface, written in synthesisable SystemVerilog and verified with
 cocotb 2.x and Verilator.
@@ -45,6 +47,7 @@ are parameters (`N` any multiple of 4); the defaults are `N = 4`, `KMAX = 16`.
 | Streamed tile, scheduler, compute-chain and DMA regressions | passing with Icarus for N = 4, 8 |
 | Tiled ML, stream GEMM, descriptor and INT8 packer regressions | included in the complete check matrix |
 | Connected AXI4/ML top lint | passing with Verilator warning policy |
+| GitHub Actions CI | runs ML, C-driver, Cocotb, Verilator, lint and Yosys checks on every push/PR |
 
 ## Quick start
 
