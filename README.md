@@ -6,14 +6,12 @@ A parameterised INT8 matrix-multiplication accelerator written in synthesizable 
 It combines an output-stationary N x N systolic array with an AXI4-Lite control/data interface,
 Cocotb verification, generic Yosys synthesis checks, and an OpenLane/LibreLane starting point.
 
-> **Project status:** The RTL and verification flows are active and passing in GitHub Actions.
-> FPGA implementation and physical design have configuration files, but have not yet been run here.
+> **Project status:** RTL and verification are active and passing in GitHub Actions. FPGA
+> implementation and physical design have configuration files, but have not yet been run here.
 
 ## What it computes
 
-The accelerator computes:
-
-C = A x B
+The accelerator computes C = A x B:
 
 - A: N x K signed INT8 matrix
 - B: K x N signed INT8 matrix
@@ -22,41 +20,51 @@ C = A x B
 - Default parameters: N = 4 and KMAX = 16
 - The full AXI top requires N to be a multiple of 4; the standalone array testbench also covers N = 2
 
-The design skews rows of A and columns of B as they enter the array. Each processing element
-multiplies one pair of INT8 values and accumulates into INT32. For a valid run, the result settles
-after K + 2N - 1 array cycles.
+Rows of A and columns of B are skewed as they enter the array. Each processing element multiplies
+one pair of INT8 values and accumulates into INT32. For a valid run, the result settles after
+K + 2N - 1 array cycles.
 
 ## Architecture
 
 ~~~text
-                    AXI4-Lite
-                        |
-              +---------v----------+
-              | axi_lite_slave     |
-              +---------+----------+
-                        |
-              +---------v----------+
-              | accel_ctrl         |
-              | - control/status   |
-              | - A and B buffers  |
-              | - run controller   |
-              +----+----------+----+
-                   |          |
-             skewed A    skewed B
-                   |          |
-              +----v----------v----+
-              | N x N systolic     |
-              | array of pe_mac    |
-              +---------+----------+
-                        |
-                  C accumulators
-                        |
-                   AXI4-Lite readback
+                         AXI4-Lite / AXI4 DMA
+                                  |
+                 +----------------v----------------+
+                 | Choose integration path         |
+                 +-------------+-------------------+
+                               |
+          Legacy single GEMM   |   Tiled ML / streaming GEMM
+                               |
+       +-----------------------+--------------------------+
+       |                                                  |
++------v-------+                                  +-------v--------+
+| axi_lite_    |                                  | DMA + descriptor|
+| slave        |                                  | control         |
++------+-------+                                  +-------+--------+
+       |                                                  |
++------v-------+                                  +-------v--------+
+| accel_ctrl   |                                  | matrix/tile     |
+| A/B buffers  |                                  | buffer + tiler  |
++------+-------+                                  +-------+--------+
+       |                                                  |
+       +------------------+               +---------------+
+                          |               |
+                   +------v-------+ +-----v----------------+
+                   | N x N        | | tiled INT8 GEMM      |
+                   | systolic     | | + K-tile accumulation|
+                   | array/PEs    | | + INT32 accumulators |
+                   +------+-------+ +-----------+----------+
+                          |                       |
+                    INT32 C                bias + requantize
+                          |                       |
+                   AXI4-Lite readback       ReLU + saturation
+                                                  |
+                                           packed INT8 output
 ~~~
 
-The repository also contains a separate tiled/streaming path for larger matrix and ML-oriented
-integration: tile scheduling, K-tile accumulation, AXI4 read/write DMA, INT8 packing, bias,
-requantisation, ReLU, and saturation.
+The repository also contains a tiled/streaming path for larger matrix and ML-oriented integration:
+tile scheduling, K-tile accumulation, AXI4 read/write DMA, INT8 packing, bias, requantisation,
+ReLU, and saturation.
 
 ## Quick start
 
@@ -80,15 +88,10 @@ source /path/to/oss-cad-suite/environment
 tabbypip install numpy cocotbext-axi
 ~~~
 
-You need:
+You need Verilator 5.x, Icarus Verilog 12 or newer, Yosys, Python with NumPy/Cocotb 2.x/
+cocotbext-axi, and GCC for the portable C-driver check.
 
-- Verilator 5.x
-- Icarus Verilog 12 or newer
-- Yosys
-- Python with NumPy, Cocotb 2.x, and cocotbext-axi
-- GCC for the portable C-driver compile check
-
-On Windows, start with the repository's reference-check script:
+On Windows, start with:
 
 ~~~powershell
 .\scripts\run_reference_checks.ps1
@@ -96,7 +99,7 @@ On Windows, start with the repository's reference-check script:
 
 ### 3. Run the checks
 
-Run the same broad check entry point used by CI:
+Run the broad check entry point used by CI:
 
 ~~~bash
 ./scripts/run_checks.sh
@@ -119,21 +122,56 @@ make TB=ml_core N=4          # INT8 ML post-processing
 make TB=stream_gemm N=4      # contiguous matrix stream
 make TB=descriptor           # DMA/ML descriptor registers
 make TB=ml_packer            # packed INT8 post-processing
-make WAVES=1                 # additionally dump an FST waveform
+make WAVES=1                 # dump an FST waveform
 ~~~
 
-Run the software ML reference independently with:
+## ML path: what it does
+
+The ML portion demonstrates how the systolic GEMM engine can be used as a building block for a
+small quantized neural-network inference pipeline. It is not a complete trained-model runtime.
+It provides a bit-accurate software contract and RTL integration blocks for connecting ML layers
+to the accelerator.
+
+### ML dataflow
+
+1. **Quantized inputs:** floating-point weights and activations are represented as signed INT8.
+2. **Tiled INT8 GEMM:** matrices are split into tiles so workloads larger than one N x N array can
+   be processed over multiple K tiles.
+3. **INT32 accumulation:** products accumulate at higher precision before conversion.
+4. **Post-processing:** bias is added, then an integer multiplier/shift performs requantization.
+5. **Activation and output:** optional ReLU is applied and the result is saturated back to INT8.
+
+The reference implementation in [ml/](ml/) is independent of PyTorch. It acts as a golden model for
+quantization, tiled matrix multiplication, bias, ReLU, requantization, and saturation. The example
+MLP shape is 784 -> 128 -> 10, representative of a small digit-classifier pipeline.
+
+Run the ML reference tests with:
 
 ~~~bash
 python -m unittest discover -s ml -p 'test_*.py'
 ~~~
 
+### ML RTL blocks
+
+- [rtl/tiled_ml_inference_core.sv](rtl/tiled_ml_inference_core.sv) provides the compute-side ML
+  boundary with bias, integer scaling, ReLU, saturation, and a backpressured INT8 output stream.
+- [rtl/tiled_matrix_tile_buffer.sv](rtl/tiled_matrix_tile_buffer.sv) manages tile movement, edge
+  padding, runtime tiling, K accumulation, and row-major result writeback.
+- [rtl/tiled_stream_gemm_top.sv](rtl/tiled_stream_gemm_top.sv) connects streaming matrix inputs to
+  the tiled GEMM path.
+- [rtl/tiled_axi4_gemm_top.sv](rtl/tiled_axi4_gemm_top.sv) provides the connected AXI4/DMA-oriented
+  integration boundary with raw-INT32 or packed-INT8 output.
+
+The original AXI4-Lite compatibility top remains a focused single-GEMM interface. The tiled ML
+path is intended for larger matrices and neural-network layers. Full FPGA inference results,
+trained-model deployment, and measured hardware throughput are not claimed yet; those are future
+integration steps documented in [docs/upgrade_roadmap.md](docs/upgrade_roadmap.md).
+
 ## Using the AXI4-Lite accelerator
 
-The legacy top-level interface is documented in [docs/register_map.md](docs/register_map.md).
-The basic transaction sequence is:
+The legacy interface is documented in [docs/register_map.md](docs/register_map.md). The basic sequence is:
 
-1. Write A to the A window at 0x1000. A uses the accelerator's transposed feed layout.
+1. Write A to the A window at 0x1000. A uses the transposed feed layout.
 2. Write B to the B window at 0x2000. B is row-major.
 3. Write K to LEN at 0x008.
 4. Write START, and optionally IRQ_EN, to CTRL at 0x000.
@@ -141,9 +179,8 @@ The basic transaction sequence is:
 6. Read N x N signed INT32 results from the C window at 0x3000, row-major.
 7. Clear DONE by writing it back to STATUS at 0x004 (write-one-to-clear).
 
-The small Python host example in [sim/accel_host.py](sim/accel_host.py) follows this sequence.
-Invalid addresses and illegal writes are reported through AXI responses and status bits rather than
-being silently ignored.
+The Python host example in [sim/accel_host.py](sim/accel_host.py) follows this sequence. Invalid
+addresses and illegal writes are reported through AXI responses and status bits.
 
 ## Verification and CI
 
@@ -157,24 +194,23 @@ GitHub Actions runs on every push and pull request. The workflow checks:
 - Generic Yosys synthesis and latch checks
 - Formal AXI-Lite and ping-pong ownership properties
 
-The test suite compares results with independent references and checks timing-sensitive behavior,
-including AXI response ordering, W-before-AW writes, delayed RREADY, byte strobes, error responses,
-back-to-back runs, and reset behavior. Mutation testing covers 20 seeded RTL/test bugs at N = 4 and
-N = 8; the current score is 20/20 detected.
+The suite compares results with independent references and checks AXI response ordering, W-before-AW
+writes, delayed RREADY, byte strobes, error responses, back-to-back runs, and reset behavior.
+Mutation testing covers 20 seeded RTL/test bugs at N = 4 and N = 8; the current score is 20/20 detected.
 
-For the detailed evidence table, see [docs/verification_matrix.md](docs/verification_matrix.md).
-For the dataflow derivation and cycle timing, see [docs/dataflow.md](docs/dataflow.md).
+See [docs/verification_matrix.md](docs/verification_matrix.md) for the evidence table and
+[docs/dataflow.md](docs/dataflow.md) for dataflow and cycle timing.
 
 ## Repository guide
 
 | Path | Purpose |
 |---|---|
 | rtl/ | Systolic array, PE, AXI-Lite control, tiled GEMM, DMA, buffering, and ML datapath RTL |
-| sim/ | Cocotb tests, Makefile, and the Python host driver |
+| sim/ | Cocotb tests, Makefile, and Python host driver |
 | tb/ | Standalone SystemVerilog array testbench |
 | ml/ | Bit-accurate INT8/ML reference models and tests |
 | scripts/ | Complete checks, reference checks, and mutation testing |
-| docs/ | Register map, dataflow, verification evidence, benchmark method, and design notes |
+| docs/ | Register map, dataflow, verification evidence, benchmarks, and design notes |
 | formal/ | SymbiYosys formal properties |
 | openlane/ | OpenLane/LibreLane configuration and constraints |
 | constraints/ | Timing constraints |
@@ -186,11 +222,9 @@ For the dataflow derivation and cycle timing, see [docs/dataflow.md](docs/datafl
 - A is stored in feed order so each cycle can read a contiguous vector.
 - Results remain in the PE accumulators; there is no separate result register file.
 - irq is level-sensitive: DONE & IRQ_EN. Clear DONE with the STATUS write-one-to-clear bit.
-- The legacy AXI4-Lite top handles one K-limited GEMM. The tiled/streaming path is intended for
-  larger M/K/N workloads.
-- Operand buffers are currently flip-flops. SRAM/BRAM mapping is a planned optimization for larger N.
-- OpenLane/LibreLane configuration targets SkyWater 130 nm, but no PDK run or FPGA implementation
-  result is claimed by this repository yet.
+- The legacy AXI4-Lite top handles one K-limited GEMM; the tiled/streaming path is for larger M/K/N workloads.
+- Operand buffers are currently flip-flops. SRAM/BRAM mapping is planned for larger N.
+- OpenLane/LibreLane targets SkyWater 130 nm, but no PDK run or FPGA implementation result is claimed yet.
 
 ## Further reading
 
