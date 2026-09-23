@@ -18,15 +18,17 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
+      # Ubuntu's apt Verilator (5.020) is older than cocotb 2.x requires
+      # (>= 5.036), so take a current iverilog/verilator/yosys from OSS CAD Suite.
       - name: Install HDL tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y iverilog verilator yosys
+        uses: YosysHQ/setup-oss-cad-suite@v4
+        with:
+          github-token: ${{ github.token }}
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -67,7 +69,7 @@ jobs:
 
       - name: Upload simulator artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: cocotb-results-n${{ matrix.n }}
           path: |
@@ -78,12 +80,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install HDL tools
+        uses: YosysHQ/setup-oss-cad-suite@v4
+        with:
+          github-token: ${{ github.token }}
+
+      - name: Show HDL tool versions
         run: |
-          sudo apt-get update
-          sudo apt-get install -y verilator yosys
+          verilator --version
+          yosys -V
 
       - name: Lint connected tiled top
         run: |
@@ -108,13 +115,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # OSS CAD Suite ships version-matched yosys, sby, yosys-smtbmc and the
       # SMT solvers (yices, z3, boolector). Cloning the sby repo alone does not
       # put an `sby` executable on PATH, and apt's yosys lacks yices.
       - name: Install formal tools
-        uses: YosysHQ/setup-oss-cad-suite@v3
+        uses: YosysHQ/setup-oss-cad-suite@v4
+        with:
+          github-token: ${{ github.token }}
 
       - name: Show formal tool versions
         run: |
