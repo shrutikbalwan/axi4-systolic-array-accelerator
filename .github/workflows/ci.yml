@@ -50,6 +50,8 @@ jobs:
           make SIM=icarus TB=tile
           make SIM=icarus TB=scheduler
           make SIM=icarus TB=chain
+          make SIM=icarus TB=read_dma
+          make SIM=icarus TB=write_dma
           make SIM=icarus TB=tiled
           make SIM=icarus TB=ml_core
           make SIM=icarus TB=stream_gemm
@@ -101,3 +103,24 @@ jobs:
       - name: Generic synthesis smoke test
         run: |
           yosys -q -p 'read_verilog -sv rtl/pe_mac.sv rtl/systolic_array.sv rtl/reset_sync.sv rtl/ml_postprocess.sv rtl/ml_int8_packer.sv rtl/tile_scheduler.sv rtl/dual_bank_buffer.sv rtl/ping_pong_bank_manager.sv rtl/tile_accumulator.sv rtl/axi4_read_dma.sv rtl/axi4_write_dma.sv rtl/dma_descriptor_ctrl.sv rtl/systolic_tile_adapter.sv rtl/tiled_compute_chain.sv rtl/tiled_gemm_controller.sv rtl/tiled_matrix_tile_buffer.sv rtl/tiled_stream_gemm_top.sv rtl/tiled_dma_shell.sv rtl/tiled_axi4_gemm_top.sv rtl/axi_lite_slave.sv rtl/accel_ctrl.sv rtl/systolic_accel_top.sv; chparam -set N 4 systolic_accel_top; synth -top systolic_accel_top -flatten; check -assert'
+
+  formal:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install formal tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y yosys boolector
+          git clone --depth 1 https://github.com/YosysHQ/sby.git /tmp/sby
+          echo "/tmp/sby" >> "$GITHUB_PATH"
+
+      - name: Prove AXI-Lite response properties
+        working-directory: formal
+        run: sby -f axi_lite_slave.sby
+
+      - name: Prove ping-pong ownership properties
+        working-directory: formal
+        run: sby -f ping_pong_bank_manager.sby

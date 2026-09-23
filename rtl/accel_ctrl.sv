@@ -188,7 +188,8 @@ module accel_ctrl #(
     // -------------------------------------------------------------------------
     logic we_ctrl, we_status, we_len, we_a, we_b;
 
-    always_comb begin
+    // Keep this combinational decode compatible with older Icarus releases.
+    always @* begin
         we_ctrl     = 1'b0;
         we_status   = 1'b0;
         we_len      = 1'b0;
@@ -364,7 +365,8 @@ module accel_ctrl #(
     wire [BUF_IDX_W-1:0] rd_buf_idx = rd_word[BUF_IDX_W-1:0];
     wire [RES_IDX_W-1:0] rd_res_idx = rd_word[RES_IDX_W-1:0];
 
-    always_comb begin
+    // Read mux is purely combinational and uses the broad Verilog sensitivity form.
+    always @* begin
         reg_rd_data = 32'd0;
         reg_rd_resp = RESP_OKAY;
         case (rd_win)
