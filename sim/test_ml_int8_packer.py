@@ -2,7 +2,7 @@
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import ReadOnly, RisingEdge
+from cocotb.triggers import NextTimeStep, ReadOnly, RisingEdge
 
 
 @cocotb.test()
@@ -23,6 +23,9 @@ async def test_relu_saturation_and_partial_pack(dut):
     index = 0
     outputs = []
     while index < len(values) or dut.out_valid.value:
+        # The previous iteration ends in ReadOnly after sampling outputs.
+        # Move to a new simulator timestep before driving the next input beat.
+        await NextTimeStep()
         active = index < len(values)
         dut.in_valid.value = int(active)
         if active:
