@@ -91,6 +91,9 @@ tabbypip install numpy cocotbext-axi
 You need Verilator 5.x, Icarus Verilog 12 or newer, Yosys, Python with NumPy/Cocotb 2.x/
 cocotbext-axi, and GCC for the portable C-driver check.
 
+The reference patch was verified with Verilator 5.020, Icarus Verilog 12.0,
+Yosys 0.33, and Cocotb 2.1.0.
+
 On Windows, start with:
 
 ~~~powershell
