@@ -12,7 +12,7 @@ WORK=$(mktemp -d)
 killed=0
 total=0
 
-while IFS=$'\t' read -r id desc; do
+while IFS=$'\t' read -r id tb desc; do
     [ "$ONLY" != "  " ] && [[ "$ONLY" != *" $id "* ]] && continue
     total=$((total + 1))
     python3 scripts/mutants.py make "$id" "$WORK/$id" || exit 2
@@ -20,7 +20,7 @@ while IFS=$'\t' read -r id desc; do
     detail=""
     for n in 4 8; do
         log="$WORK/$id/N$n.log"
-        (cd sim && make SIM="$SIM" TB=accel N="$n" RTL_DIR="$WORK/$id/rtl" \
+        (cd sim && make SIM="$SIM" TB="$tb" N="$n" RTL_DIR="$WORK/$id/rtl" \
             SIM_BUILD="$WORK/$id/build_N$n" COCOTB_RESULTS_FILE="$WORK/$id/results_N$n.xml" \
             > "$log" 2>&1)
         fails=$(grep -oE 'FAIL=[0-9]+' "$log" | tail -1 | cut -d= -f2)
@@ -36,3 +36,4 @@ done < <(python3 scripts/mutants.py list)
 
 echo "mutation score: $killed / $total killed"
 rm -rf "$WORK"
+[ "$killed" -eq "$total" ]

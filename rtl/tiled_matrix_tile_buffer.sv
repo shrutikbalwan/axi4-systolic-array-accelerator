@@ -114,8 +114,14 @@ module tiled_matrix_tile_buffer #(
 
     wire [63:0] a_total_bytes = m_q * k_q;
     wire [63:0] b_total_bytes = k_q * n_q;
+    // Validated MAX_M/MAX_K bounds keep the rounded word count within 32 bits.
+    /* verilator lint_off WIDTHTRUNC */
     wire [31:0] a_total_words = (a_total_bytes + 64'd3) >> 2;
+    /* verilator lint_on WIDTHTRUNC */
+    // Validated MAX_K/MAX_N bounds keep the rounded word count within 32 bits.
+    /* verilator lint_off WIDTHTRUNC */
     wire [31:0] b_total_words = (b_total_bytes + 64'd3) >> 2;
+    /* verilator lint_on WIDTHTRUNC */
     wire [31:0] tile_total_words = tk_len_q * WORDS_PER_ROW;
     wire [31:0] c_total_words = m_q * n_q;
 

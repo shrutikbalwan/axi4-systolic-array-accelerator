@@ -35,7 +35,7 @@ cat "$BUILD/ml_benchmark.txt"
 echo "== lint (verilator -Wall, warnings are fatal) =="
 for cfg in "4 16" "8 16" "16 16" "8 64"; do
     set -- $cfg
-    verilator --lint-only -Wall --quiet-stats -GN="$1" -GKMAX="$2" $RTL --top-module systolic_accel_top
+    verilator --lint-only -Wall -GN="$1" -GKMAX="$2" $RTL --top-module systolic_accel_top
     echo "   N=$1 KMAX=$2 clean"
 done
 
@@ -44,8 +44,8 @@ echo "== lint connected tiled AXI4/ML top =="
 # narrower tile-local counters and contains a few procedural temporaries used
 # only for address remapping. Keep the strict legacy-core lint above, while
 # documenting these composition-level waivers instead of hiding all warnings.
-verilator --lint-only -Wall --quiet-stats \
-    -Wno-WIDTHTRUNC -Wno-WIDTHEXPAND -Wno-BLKSEQ \
+verilator --lint-only -Wall \
+    -Wno-WIDTHEXPAND -Wno-BLKSEQ \
     -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM \
     -GARRAY_N=4 -GMAX_M=64 -GMAX_N=64 -GMAX_K=64 \
     $RTL --top-module tiled_axi4_gemm_top

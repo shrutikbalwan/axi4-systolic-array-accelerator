@@ -129,3 +129,55 @@ async def test_tiled_ml_core(dut):
     expected = np.maximum(a @ b, 0).clip(-128, 127)
     np.testing.assert_array_equal(got, expected)
     assert dut.error.value == 0
+
+
+@cocotb.test()
+async def test_wide_scaled_product_does_not_wrap(dut):
+    """A positive 64-bit requantization product must clamp to +127."""
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    dut.rst_n.value = 0
+    dut.start_job.value = 0
+    dut.tile_ready.value = 0
+    dut.out_ready.value = 1
+    dut.a_stream_valid.value = 0
+    dut.b_stream_valid.value = 0
+    dut.relu_en.value = 0
+    dut.bias.value = 0
+    dut.scale_mult.value = 1 << 30
+    dut.scale_shift.value = 0
+    for _ in range(3):
+        await RisingEdge(dut.clk)
+    dut.rst_n.value = 1
+
+    dut.matrix_m.value = 1
+    dut.matrix_n.value = 1
+    dut.matrix_k.value = 1
+    dut.tile_m_cfg.value = N
+    dut.tile_n_cfg.value = N
+    dut.tile_k_cfg.value = 1
+    dut.start_job.value = 1
+    await RisingEdge(dut.clk)
+    dut.start_job.value = 0
+
+    for _ in range(1000):
+        await RisingEdge(dut.clk)
+        if dut.tile_valid.value:
+            dut.tile_ready.value = 1
+            await send_tile(dut, [3] + [0] * (WPR - 1), [1] + [0] * (WPR - 1))
+            dut.tile_ready.value = 0
+            break
+    else:
+        raise AssertionError("tile descriptor timed out")
+
+    outputs = []
+    for _ in range(2000):
+        await RisingEdge(dut.clk)
+        await ReadOnly()
+        if dut.out_valid.value and dut.out_ready.value:
+            outputs.append(dut.out_data.value.to_signed())
+            if dut.out_last.value:
+                break
+    else:
+        raise AssertionError("ML output timed out")
+
+    assert outputs[0] == 127

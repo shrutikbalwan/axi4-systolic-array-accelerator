@@ -34,12 +34,15 @@ module ml_int8_packer (
     wire signed [63:0] sum_ext = {{32{sum_value[31]}}, sum_value};
     wire signed [63:0] scale_ext = {{32{scale_mult[31]}}, scale_mult};
     wire signed [63:0] scaled_value = sum_ext * scale_ext;
-    wire signed [31:0] shifted_value = scaled_value >>> scale_shift;
+    wire signed [63:0] shifted_value = scaled_value >>> scale_shift;
+    // The final branch is reached only when shifted_value is already in INT8 range.
+    /* verilator lint_off WIDTHTRUNC */
     wire signed [7:0] quantized_value =
         (relu_en && (shifted_value < 0)) ? 8'sd0 :
         (shifted_value > 127) ? 8'sd127 :
         (shifted_value < -128) ? -8'sd128 :
         shifted_value;
+    /* verilator lint_on WIDTHTRUNC */
 
     assign in_ready = !out_valid_q || out_ready;
     assign out_valid = out_valid_q;

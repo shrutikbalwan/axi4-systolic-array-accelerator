@@ -60,6 +60,7 @@ module tiled_ml_inference_core #(
     wire acc_ready;
     wire acc_last;
     wire post_valid;
+    wire unused_tile_done;
     logic last_q;
 
     // The one-entry registered post-process stage is allowed to accept a new
@@ -77,6 +78,7 @@ module tiled_ml_inference_core #(
         .tile_k_base(tile_k_base), .tile_m_len(tile_m_len),
         .tile_n_len(tile_n_len), .tile_k_len(tile_k_len),
         .tile_first_k(tile_first_k), .tile_last_k(tile_last_k),
+        .tile_done(unused_tile_done),
         .a_stream_data(a_stream_data), .a_stream_valid(a_stream_valid),
         .a_stream_ready(a_stream_ready), .a_stream_last(a_stream_last),
         .b_stream_data(b_stream_data), .b_stream_valid(b_stream_valid),

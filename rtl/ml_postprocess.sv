@@ -28,7 +28,7 @@ module ml_postprocess #(
 
     logic signed [ACC_W-1:0] sum;
     logic signed [(2*ACC_W)-1:0] scaled;
-    logic signed [ACC_W-1:0] shifted;
+    logic signed [(2*ACC_W)-1:0] shifted;
 
     always_comb begin
         sum     = acc_in + bias_in;

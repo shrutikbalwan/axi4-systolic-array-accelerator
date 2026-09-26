@@ -68,7 +68,10 @@ module systolic_tile_adapter #(
     logic [31:0] a_mem [0:BUF_WORDS-1];
     logic [31:0] b_mem [0:BUF_WORDS-1];
 
+    // k_q is limited to KMAX, so the product cannot exceed BUF_WORDS.
+    /* verilator lint_off WIDTHTRUNC */
     wire [COUNT_W-1:0] total_words = k_q * WPR;
+    /* verilator lint_on WIDTHTRUNC */
     wire a_accept = a_stream_valid && a_stream_ready;
     wire b_accept = b_stream_valid && b_stream_ready;
     wire a_complete_next = (a_count + a_accept >= total_words);
@@ -132,11 +135,17 @@ module systolic_tile_adapter #(
 
                 S_LOAD: begin
                     if (a_accept) begin
+                        // Acceptance stops before the terminal count, so the RAM index is in range.
+                        /* verilator lint_off WIDTHTRUNC */
                         a_mem[a_count] <= a_stream_data;
+                        /* verilator lint_on WIDTHTRUNC */
                         a_count <= a_count + 1'b1;
                     end
                     if (b_accept) begin
+                        // Acceptance stops before the terminal count, so the RAM index is in range.
+                        /* verilator lint_off WIDTHTRUNC */
                         b_mem[b_count] <= b_stream_data;
+                        /* verilator lint_on WIDTHTRUNC */
                         b_count <= b_count + 1'b1;
                     end
                     if (a_complete_next && b_complete_next) begin
