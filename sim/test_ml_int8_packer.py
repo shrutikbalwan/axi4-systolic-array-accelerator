@@ -39,3 +39,30 @@ async def test_relu_saturation_and_partial_pack(dut):
             outputs.append((int(dut.out_data.value), int(dut.out_last.value)))
 
     assert outputs == [(0x7F020000, 0), (0x00000003, 1)]
+
+
+@cocotb.test()
+async def test_wide_scaled_product_does_not_wrap(dut):
+    """Clamp the 64-bit product before narrowing it to INT8."""
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    dut.rst_n.value = 0
+    dut.in_valid.value = 0
+    dut.out_ready.value = 1
+    dut.bias.value = 0
+    dut.scale_mult.value = 1 << 30
+    dut.scale_shift.value = 0
+    dut.relu_en.value = 0
+    for _ in range(3):
+        await RisingEdge(dut.clk)
+    dut.rst_n.value = 1
+
+    dut.in_data.value = 3
+    dut.in_last.value = 1
+    dut.in_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.in_valid.value = 0
+    await ReadOnly()
+
+    assert dut.out_valid.value == 1
+    assert int(dut.out_data.value) == 0x0000007F
+    assert dut.out_last.value == 1
