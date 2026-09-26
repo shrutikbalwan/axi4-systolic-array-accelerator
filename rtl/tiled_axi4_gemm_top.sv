@@ -77,7 +77,10 @@ module tiled_axi4_gemm_top #(
             perf_active_q <= 0;
             perf_mac_q <= perf_mac_target;
             if ((shell_tm != 0) && (shell_tn != 0) && (shell_tk != 0))
+                // Accepted jobs are bounded by MAX_M/MAX_N/MAX_K, so the tile count fits 32 bits.
+                /* verilator lint_off WIDTHTRUNC */
                 perf_tile_count_q <= perf_m_tiles * perf_n_tiles * perf_k_tiles;
+                /* verilator lint_on WIDTHTRUNC */
             else
                 perf_tile_count_q <= 0;
         end else if (compute_busy) begin

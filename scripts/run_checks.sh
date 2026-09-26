@@ -45,7 +45,7 @@ echo "== lint connected tiled AXI4/ML top =="
 # only for address remapping. Keep the strict legacy-core lint above, while
 # documenting these composition-level waivers instead of hiding all warnings.
 verilator --lint-only -Wall --quiet-stats \
-    -Wno-WIDTHTRUNC -Wno-WIDTHEXPAND -Wno-BLKSEQ \
+    -Wno-WIDTHEXPAND -Wno-BLKSEQ \
     -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM \
     -GARRAY_N=4 -GMAX_M=64 -GMAX_N=64 -GMAX_K=64 \
     $RTL --top-module tiled_axi4_gemm_top
