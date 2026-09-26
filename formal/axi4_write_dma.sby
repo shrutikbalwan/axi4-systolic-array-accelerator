@@ -1,0 +1,21 @@
+[tasks]
+prove
+cover
+
+[options]
+prove: mode prove
+cover: mode cover
+depth 40
+
+[engines]
+prove: abc pdr
+cover: smtbmc yices
+
+[script]
+read -formal axi4_write_dma.sv axi_fvip_compat_properties.sv axi4_write_dma_formal.sv
+prep -top axi4_write_dma_formal
+
+[files]
+../rtl/axi4_write_dma.sv
+axi_fvip_compat_properties.sv
+axi4_write_dma_formal.sv

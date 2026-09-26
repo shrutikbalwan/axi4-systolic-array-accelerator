@@ -41,21 +41,14 @@ module axi_lite_slave_formal;
         .reg_rd_data(reg_rd_data), .reg_rd_resp(reg_rd_resp)
     );
 
-    initial assume(!rst_n);
+    axi_lite_destination_fvip_properties fvip_checker (
+        .clk(clk), .rst_n(rst_n),
+        .s_axi_bvalid(bvalid), .s_axi_bresp(bresp), .s_axi_bready(bready),
+        .s_axi_rvalid(rvalid), .s_axi_rdata(rdata),
+        .s_axi_rresp(rresp), .s_axi_rready(rready)
+    );
 
-    always @(posedge clk) begin
-        if (rst_n && $past(rst_n)) begin
-            if ($past(bvalid && !bready)) begin
-                assert(bvalid);
-                assert(bresp == $past(bresp));
-            end
-            if ($past(rvalid && !rready)) begin
-                assert(rvalid);
-                assert(rdata == $past(rdata));
-                assert(rresp == $past(rresp));
-            end
-        end
-    end
+    initial assume(!rst_n);
 
 endmodule
 

@@ -6,9 +6,10 @@ depth 20
 smtbmc
 
 [script]
-read -formal axi_lite_slave.sv axi_lite_slave_formal.sv
+read -formal axi_lite_slave.sv axi_fvip_compat_properties.sv axi_lite_slave_formal.sv
 prep -top axi_lite_slave_formal
 
 [files]
 ../rtl/axi_lite_slave.sv
+axi_fvip_compat_properties.sv
 axi_lite_slave_formal.sv

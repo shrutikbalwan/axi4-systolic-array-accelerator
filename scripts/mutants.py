@@ -83,7 +83,17 @@ MUTANTS = {
                                "wire signed [31:0] shifted_value")]),
     "M22": ("ML post-process truncates the scaled product before clamping", [
         ("ml_postprocess.sv", "logic signed [(2*ACC_W)-1:0] shifted",
-                              "logic signed [ACC_W-1:0] shifted")]),
+                               "logic signed [ACC_W-1:0] shifted")]),
+    "M23": ("read DMA omits the AXI 4KB page clamp", [
+        ("axi4_read_dma.sv",
+         "        if (burst_limit_wide > {21'b0, beats_to_page_end})\n"
+         "            burst_limit_wide = {21'b0, beats_to_page_end};\n",
+         "        // Mutant: omit the AXI 4KB page clamp.\n")]),
+    "M24": ("write DMA omits the AXI 4KB page clamp", [
+        ("axi4_write_dma.sv",
+         "        if (burst_limit_wide > {21'b0, beats_to_page_end})\n"
+         "            burst_limit_wide = {21'b0, beats_to_page_end};\n",
+         "        // Mutant: omit the AXI 4KB page clamp.\n")]),
 }
 
 MUTANT_TB = {
@@ -93,6 +103,7 @@ MUTANT_TB = {
     "M13": "accel", "M14": "accel", "M15": "accel", "M16": "accel",
     "M17": "accel", "M18": "accel", "M19": "accel", "M20": "accel",
     "M21": "ml_packer", "M22": "ml_core",
+    "M23": "formal_read_dma", "M24": "formal_write_dma",
 }
 
 
