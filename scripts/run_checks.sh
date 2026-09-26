@@ -83,12 +83,14 @@ for n in 4 8; do
     echo "   N=$n: elaborates, no latches, $cells cells"
 done
 
-echo "== formal AXI response checks =="
+echo "== formal AXI protocol and ownership checks =="
 if command -v sby >/dev/null 2>&1; then
     # The [files] paths in each harness are relative to formal/.
     (cd formal && sby -f axi_lite_slave.sby)
+    (cd formal && sby -f axi4_read_dma.sby)
+    (cd formal && sby -f axi4_write_dma.sby)
     (cd formal && sby -f ping_pong_bank_manager.sby)
-    echo "   AXI response and ping-pong ownership proofs passed"
+    echo "   AXI-Lite, AXI4 DMA, and ping-pong ownership proofs passed"
 else
     echo "   SymbiYosys unavailable; formal proof skipped"
 fi

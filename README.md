@@ -218,12 +218,13 @@ GitHub Actions runs on every push and pull request. The workflow checks:
 - RTL lint for the connected top
 - Generic Yosys synthesis and latch checks
 - ECP5-85K place-and-route resource and timing reports
-- Formal AXI-Lite and ping-pong ownership properties
+- FVIP-derived formal AXI-Lite and AXI4 DMA protocol properties, plus ping-pong ownership properties
 
 The suite compares results with independent references and checks AXI response ordering, W-before-AW
 writes, delayed RREADY, byte strobes, error responses, back-to-back runs, and reset behavior.
-Mutation testing detects all 22 deliberately seeded mutants at N = 4 and N = 8.
-That 22/22 score describes only the listed mutation set; it is not a claim that the
+Mutation testing detects all 30 deliberately seeded mutants; the two DMA 4KB-boundary
+mutants are killed by formal proofs and the other 28 run at N = 4 and N = 8.
+That 30/30 score describes only the listed mutation set; it is not a claim that the
 tests cover every possible RTL defect.
 
 See [docs/verification_matrix.md](docs/verification_matrix.md) for the evidence table and

@@ -49,12 +49,25 @@ module axi4_read_dma #(
     logic [BURST_W-1:0] burst_q;
     logic [BURST_W-1:0] beats_q;
     logic [BURST_W-1:0] next_burst;
+    logic [31:0] burst_limit_wide;
+
+    // AXI4 (IHI 0022, A3.4.1): a burst must not cross a 4KB address boundary.
+    // addr_q[11:2] is the word index within the page (0..1023), so beats left
+    // in the page is 1024 - that, ranging 1..1024. Needs 11 bits of its own.
+    wire [10:0] beats_to_page_end = 11'd1024 - {1'b0, addr_q[11:2]};
 
     always_comb begin
         if (remaining_q > MAX_BURST)
-            next_burst = MAX_BURST[BURST_W-1:0];
+            burst_limit_wide = MAX_BURST;
         else
-            next_burst = remaining_q[BURST_W-1:0];
+            burst_limit_wide = remaining_q;
+        if (burst_limit_wide > {21'b0, beats_to_page_end})
+            burst_limit_wide = {21'b0, beats_to_page_end};
+
+        // The three-way minimum is at most MAX_BURST, which fits BURST_W by construction.
+        /* verilator lint_off WIDTHTRUNC */
+        next_burst = burst_limit_wide;
+        /* verilator lint_on WIDTHTRUNC */
 
         busy          = (state != S_IDLE);
         m_axi_araddr  = addr_q;

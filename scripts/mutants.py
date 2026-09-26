@@ -83,7 +83,37 @@ MUTANTS = {
                                "wire signed [31:0] shifted_value")]),
     "M22": ("ML post-process truncates the scaled product before clamping", [
         ("ml_postprocess.sv", "logic signed [(2*ACC_W)-1:0] shifted",
-                              "logic signed [ACC_W-1:0] shifted")]),
+                               "logic signed [ACC_W-1:0] shifted")]),
+    "M23": ("read DMA omits the AXI 4KB page clamp", [
+        ("axi4_read_dma.sv",
+         "        if (burst_limit_wide > {21'b0, beats_to_page_end})\n"
+         "            burst_limit_wide = {21'b0, beats_to_page_end};\n",
+         "        // Mutant: omit the AXI 4KB page clamp.\n")]),
+    "M24": ("write DMA omits the AXI 4KB page clamp", [
+        ("axi4_write_dma.sv",
+         "        if (burst_limit_wide > {21'b0, beats_to_page_end})\n"
+         "            burst_limit_wide = {21'b0, beats_to_page_end};\n",
+         "        // Mutant: omit the AXI 4KB page clamp.\n")]),
+    "M25": ("read DMA descriptor length is one word too long", [
+        ("axi4_read_dma.sv", "remaining_q <= word_count;",
+                             "remaining_q <= word_count + 1'b1;")]),
+    "M26": ("write DMA descriptor length is one word too long", [
+        ("axi4_write_dma.sv", "remaining_q <= word_count;",
+                              "remaining_q <= word_count + 1'b1;")]),
+    "M27": ("scheduler advances K one element too far", [
+        ("tile_scheduler.sv", "k_q <= k_q + tile_k_len;",
+                              "k_q <= k_q + tile_k_len + 1'b1;")]),
+    "M28": ("tile accumulator ignores first-K reset", [
+        ("tile_accumulator.sv", "prior_value = first_q ? '0 : acc_mem[in_count];",
+                                "prior_value = acc_mem[in_count];")]),
+    "M29": ("tile adapter asserts result LAST one word early", [
+        ("systolic_tile_adapter.sv",
+         "assign c_stream_last = c_stream_valid && (c_count == RES_WORDS - 1);",
+         "assign c_stream_last = c_stream_valid && (c_count == RES_WORDS - 2);")]),
+    "M30": ("matrix tile buffer asserts output LAST one word early", [
+        ("tiled_matrix_tile_buffer.sv",
+         "c_out_last = c_out_valid && (c_out_count == c_total_words - 1);",
+         "c_out_last = c_out_valid && (c_out_count == c_total_words - 2);")]),
 }
 
 MUTANT_TB = {
@@ -93,6 +123,9 @@ MUTANT_TB = {
     "M13": "accel", "M14": "accel", "M15": "accel", "M16": "accel",
     "M17": "accel", "M18": "accel", "M19": "accel", "M20": "accel",
     "M21": "ml_packer", "M22": "ml_core",
+    "M23": "formal_read_dma", "M24": "formal_write_dma",
+    "M25": "read_dma", "M26": "write_dma", "M27": "scheduler",
+    "M28": "chain", "M29": "tile", "M30": "stream_gemm",
 }
 
 

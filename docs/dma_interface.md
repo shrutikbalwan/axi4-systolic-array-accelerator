@@ -9,6 +9,9 @@ incrementing bursts, and expose ready/valid streams to tile buffers.
 - 32-bit data beats and 4-byte aligned addresses.
 - `ARLEN` is burst length minus one; bursts are at most `MAX_BURST` beats.
 - Read data is held by AXI until the downstream stream raises `stream_ready`.
+- Bursts are shortened at 4KB page boundaries as required by AXI4. This can
+  cause a small, correct throughput dip and shift performance-counter values
+  for descriptors near a boundary.
 - `stream_last` marks the final word of the entire request, not each burst.
 - `done` is a one-cycle pulse after the final beat or an empty request.
 - `error` latches an AXI error response or an unexpected `RLAST`.

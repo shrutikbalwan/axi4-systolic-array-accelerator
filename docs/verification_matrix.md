@@ -10,11 +10,11 @@ requires the external HDL or FPGA toolchain.
 | Runtime M/K/N tiling | `rtl/tile_scheduler.sv`, `rtl/tiled_gemm_controller.sv` | NumPy descriptor emulator | HDL simulation |
 | K-tile accumulation | `rtl/tile_accumulator.sv`, `rtl/tiled_compute_chain.sv` | Tiled reference tests | HDL simulation |
 | Contiguous-to-tile buffering | `rtl/tiled_matrix_tile_buffer.sv` | Stream GEMM cocotb target | HDL simulation and RAM inference report |
-| AXI4 burst movement | `rtl/axi4_read_dma.sv`, `rtl/axi4_write_dma.sv` | DMA cocotb targets registered | HDL simulation and protocol review |
+| AXI4 burst movement | `rtl/axi4_read_dma.sv`, `rtl/axi4_write_dma.sv` | DMA cocotb plus FVIP-derived formal proofs, including 4KB boundaries | None for implemented protocol rules |
 | Connected AXI4 GEMM/ML top | `rtl/tiled_axi4_gemm_top.sv` | Descriptor-level emulator | Connected-top lint, simulation, synthesis |
 | SoC descriptor interface | `rtl/dma_descriptor_ctrl.sv`, `sw/dma_descriptor.h` | C compile and descriptor cocotb target | HDL simulation on CI |
 | Performance accounting | `rtl/accel_ctrl.sv`, `ml/benchmark.py` | Reference MAC/tile report | FPGA cycle/bandwidth measurements |
-| Formal AXI properties | `formal/axi_lite_slave.sby` | Harness checked into repo | SymbiYosys proof |
+| Formal AXI properties | `formal/axi_lite_slave.sby`, `formal/axi4_read_dma.sby`, `formal/axi4_write_dma.sby` | AXI-Lite and AXI4 DMA proofs pass locally | CI re-run |
 | Formal ping-pong properties | `formal/ping_pong_bank_manager.sby` | Harness checked into repo | SymbiYosys proof |
 | FPGA/ASIC readiness | OpenLane configs, SDC/XDC, FPGA guide | JSON validation | P&R, timing, utilization, power |
 

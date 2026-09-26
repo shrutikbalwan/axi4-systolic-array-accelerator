@@ -12,4 +12,10 @@ build_*/
 tools/
 runs/
 formal/axi_lite_slave/
+formal/axi4_read_dma/
+formal/axi4_read_dma_cover/
+formal/axi4_read_dma_prove/
+formal/axi4_write_dma/
+formal/axi4_write_dma_cover/
+formal/axi4_write_dma_prove/
 formal/ping_pong_bank_manager/

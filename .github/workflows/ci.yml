@@ -103,6 +103,12 @@ jobs:
         working-directory: formal
         run: sby -f axi_lite_slave.sby
 
+      - name: Prove AXI4 DMA source properties
+        working-directory: formal
+        run: |
+          sby -f axi4_read_dma.sby
+          sby -f axi4_write_dma.sby
+
       - name: Prove ping-pong ownership properties
         working-directory: formal
         run: sby -f ping_pong_bank_manager.sby
