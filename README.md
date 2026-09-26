@@ -199,7 +199,9 @@ GitHub Actions runs on every push and pull request. The workflow checks:
 
 The suite compares results with independent references and checks AXI response ordering, W-before-AW
 writes, delayed RREADY, byte strobes, error responses, back-to-back runs, and reset behavior.
-Mutation testing covers 20 seeded RTL/test bugs at N = 4 and N = 8; the current score is 20/20 detected.
+Mutation testing detects all 22 deliberately seeded mutants at N = 4 and N = 8.
+That 22/22 score describes only the listed mutation set; it is not a claim that the
+tests cover every possible RTL defect.
 
 See [docs/verification_matrix.md](docs/verification_matrix.md) for the evidence table and
 [docs/dataflow.md](docs/dataflow.md) for dataflow and cycle timing.
