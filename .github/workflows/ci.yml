@@ -9,6 +9,27 @@ permissions:
   contents: read
 
 jobs:
+  fpga-implementation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Install FPGA implementation tools
+        uses: YosysHQ/setup-oss-cad-suite@v4
+        with:
+          github-token: ${{ github.token }}
+
+      - name: Implement documented ECP5 configurations
+        run: ./scripts/fpga_report.sh
+
+      - name: Upload FPGA implementation reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: fpga-implementation-reports
+          path: build/fpga_report/
+
   checks:
     runs-on: ubuntu-latest
     steps:

@@ -4,10 +4,10 @@
 
 A parameterised INT8 matrix-multiplication accelerator written in synthesizable SystemVerilog.
 It combines an output-stationary N x N systolic array with an AXI4-Lite control/data interface,
-Cocotb verification, generic Yosys synthesis checks, and an OpenLane/LibreLane starting point.
+Cocotb verification, ECP5 implementation checks, and an OpenLane/LibreLane starting point.
 
-> **Project status:** RTL and verification are active and passing in GitHub Actions. FPGA
-> implementation and physical design have configuration files, but have not yet been run here.
+> **Project status:** RTL, verification, and an open-source ECP5 implementation flow are active in
+> GitHub Actions. No FPGA-board validation or ASIC physical-design result is claimed.
 
 ## What it computes
 
@@ -65,6 +65,28 @@ K + 2N - 1 array cycles.
 The repository also contains a tiled/streaming path for larger matrix and ML-oriented integration:
 tile scheduling, K-tile accumulation, AXI4 read/write DMA, INT8 packing, bias, requantisation,
 ReLU, and saturation.
+
+## FPGA implementation results
+
+**post-route on ECP5 LFE5U-85F, open-source flow**
+
+| Array N | LUTs | FFs | DSPs | BRAMs | Post-route Fmax | Fit |
+|---:|---:|---:|---:|---:|---:|:---|
+| 4 | 3664 | 1122 | 16 | 0 | 70.14 MHz | FITS |
+| 8 | 9898 | 3778 | 64 | 0 | 57.48 MHz | FITS |
+| 16 | 38360 | 14465 | 256 | 0 | — | **DOES NOT FIT** |
+
+These are place-and-route results from Yosys and nextpnr-ecp5 for the LFE5U-85F in the CABGA381
+package, not vendor-tool, board-level, or ASIC measurements. LUTs are nextpnr `TRELLIS_COMB`
+usage, FFs are `TRELLIS_FF`, DSPs are `MULT18X18D`, and BRAMs are `DP16KD`. N=16 exceeds the
+part's 156 DSP blocks, so nextpnr cannot route it and no Fmax is reported. Reproduce the table with:
+
+~~~bash
+./scripts/fpga_report.sh
+~~~
+
+The measured implementation data and the separate generic-cell/throughput indicators are documented
+in [docs/implementation_estimate.md](docs/implementation_estimate.md).
 
 ## Quick start
 
@@ -195,6 +217,7 @@ GitHub Actions runs on every push and pull request. The workflow checks:
 - Verilator regressions
 - RTL lint for the connected top
 - Generic Yosys synthesis and latch checks
+- ECP5-85K place-and-route resource and timing reports
 - Formal AXI-Lite and ping-pong ownership properties
 
 The suite compares results with independent references and checks AXI response ordering, W-before-AW
@@ -229,7 +252,8 @@ See [docs/verification_matrix.md](docs/verification_matrix.md) for the evidence 
 - irq is level-sensitive: DONE & IRQ_EN. Clear DONE with the STATUS write-one-to-clear bit.
 - The legacy AXI4-Lite top handles one K-limited GEMM; the tiled/streaming path is for larger M/K/N workloads.
 - Operand buffers are currently flip-flops. SRAM/BRAM mapping is planned for larger N.
-- OpenLane/LibreLane targets SkyWater 130 nm, but no PDK run or FPGA implementation result is claimed yet.
+- OpenLane/LibreLane targets SkyWater 130 nm, but no PDK run is claimed; the FPGA figures above are
+  open-source ECP5 place-and-route results, not board measurements.
 
 ## Further reading
 
