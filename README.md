@@ -222,9 +222,9 @@ GitHub Actions runs on every push and pull request. The workflow checks:
 
 The suite compares results with independent references and checks AXI response ordering, W-before-AW
 writes, delayed RREADY, byte strobes, error responses, back-to-back runs, and reset behavior.
-Mutation testing detects all 24 deliberately seeded mutants; the two DMA 4KB-boundary
-mutants are killed by formal proofs and the other 22 run at N = 4 and N = 8.
-That 24/24 score describes only the listed mutation set; it is not a claim that the
+Mutation testing detects all 30 deliberately seeded mutants; the two DMA 4KB-boundary
+mutants are killed by formal proofs and the other 28 run at N = 4 and N = 8.
+That 30/30 score describes only the listed mutation set; it is not a claim that the
 tests cover every possible RTL defect.
 
 See [docs/verification_matrix.md](docs/verification_matrix.md) for the evidence table and
