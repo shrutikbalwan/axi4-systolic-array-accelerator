@@ -78,6 +78,21 @@ MUTANTS = {
     "M20": ("soft reset leaves DONE set", [
         ("accel_ctrl.sv", "                state <= S_IDLE;\n                done  <= 1'b0;\n                err   <= 1'b0;",
                           "                state <= S_IDLE;\n                err   <= 1'b0;")]),
+    "M21": ("INT8 packer truncates the scaled product before clamping", [
+        ("ml_int8_packer.sv", "wire signed [63:0] shifted_value",
+                               "wire signed [31:0] shifted_value")]),
+    "M22": ("ML post-process truncates the scaled product before clamping", [
+        ("ml_postprocess.sv", "logic signed [(2*ACC_W)-1:0] shifted",
+                              "logic signed [ACC_W-1:0] shifted")]),
+}
+
+MUTANT_TB = {
+    "M01": "accel", "M02": "accel", "M03": "accel", "M04": "accel",
+    "M05": "array", "M06": "accel", "M07": "accel", "M08": "accel",
+    "M09": "accel", "M10": "accel", "M11": "array", "M12": "array",
+    "M13": "accel", "M14": "accel", "M15": "accel", "M16": "accel",
+    "M17": "accel", "M18": "accel", "M19": "accel", "M20": "accel",
+    "M21": "ml_packer", "M22": "ml_core",
 }
 
 
@@ -99,7 +114,7 @@ def make(mid, out):
 if __name__ == "__main__":
     if len(sys.argv) >= 2 and sys.argv[1] == "list":
         for mid, (desc, _) in MUTANTS.items():
-            print(f"{mid}\t{desc}")
+            print(f"{mid}\t{MUTANT_TB[mid]}\t{desc}")
     elif len(sys.argv) == 4 and sys.argv[1] == "make":
         make(sys.argv[2], sys.argv[3])
     else:
