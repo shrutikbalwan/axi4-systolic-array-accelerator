@@ -1,5 +1,7 @@
 """Contiguous matrix streams through the tile buffer and tiled GEMM top."""
 
+import os
+
 import cocotb
 import numpy as np
 from cocotb.clock import Clock
@@ -18,8 +20,10 @@ def packed_row_major(matrix):
     return [pack(flat[index : index + 4]) for index in range(0, len(flat), 4)]
 
 
-@cocotb.test()
-async def test_contiguous_stream_gemm_with_edges(dut):
+ARRAY_N = int(os.environ.get("ARRAY_N", "4"))
+
+
+async def run_stream_gemm(dut, m, n, k, tile_mn, seed):
     cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
     dut.rst_n.value = 0
     dut.start_job.value = 0
@@ -30,8 +34,7 @@ async def test_contiguous_stream_gemm_with_edges(dut):
         await RisingEdge(dut.clk)
     dut.rst_n.value = 1
 
-    m, n, k = 5, 6, 9
-    rng = np.random.default_rng(2029)
+    rng = np.random.default_rng(seed)
     a = rng.integers(-8, 8, (m, k), dtype=np.int64)
     b = rng.integers(-8, 8, (k, n), dtype=np.int64)
     a_words = packed_row_major(a)
@@ -40,8 +43,8 @@ async def test_contiguous_stream_gemm_with_edges(dut):
     dut.matrix_m.value = m
     dut.matrix_n.value = n
     dut.matrix_k.value = k
-    dut.tile_m_cfg.value = 4
-    dut.tile_n_cfg.value = 4
+    dut.tile_m_cfg.value = tile_mn
+    dut.tile_n_cfg.value = tile_mn
     dut.tile_k_cfg.value = 4
     dut.start_job.value = 1
     await RisingEdge(dut.clk)
@@ -99,3 +102,15 @@ async def test_contiguous_stream_gemm_with_edges(dut):
     assert first_output_cycle is not None
     assert output_cycles < 20000
     assert dut.error.value == 0
+
+
+@cocotb.test()
+async def test_contiguous_stream_gemm_with_edges(dut):
+    await run_stream_gemm(dut, 5, 6, 9, 4, 2029)
+
+
+@cocotb.test()
+async def test_full_array_tiles_with_edges(dut):
+    """Shapes that fill every PE (incl. the bottom-right corner) plus edge tiles."""
+    n = ARRAY_N
+    await run_stream_gemm(dut, 2 * n + 1, 2 * n + 3, 3 * n + 1, n, 2030)
