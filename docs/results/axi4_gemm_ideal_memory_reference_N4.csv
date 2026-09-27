@@ -1,0 +1,5 @@
+case,array_n,macs,active_cycles,macs_per_cycle,utilisation_pct,in_words,out_words,wall_cycles_incl_driver
+gemm 64x64x64 int32,4,262144,52221,5.02,31.4,2048,4096,52238
+gemm 64x64x64 int8,4,262144,49152,5.33,33.3,2048,1024,49182
+mlp layer1 (64x32x64),4,131072,25344,5.17,32.3,1536,512,25374
+mlp layer2 (64x10x32),4,20480,6496,3.15,19.7,592,160,6526
