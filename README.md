@@ -6,8 +6,45 @@ A parameterised INT8 matrix-multiplication accelerator written in synthesizable 
 It combines an output-stationary N x N systolic array with an AXI4-Lite control/data interface,
 Cocotb verification, ECP5 implementation checks, and an OpenLane/LibreLane starting point.
 
-> **Project status:** RTL, verification, and an open-source ECP5 implementation flow are active in
-> GitHub Actions. No FPGA-board validation or ASIC physical-design result is claimed.
+> **Project status:** RTL, verification, an open-source ECP5 implementation flow, and a
+> **RISC-V SoC simulation running a trained network** are all active in GitHub Actions.
+> No FPGA-board validation or ASIC physical-design result is claimed.
+
+## Highlights
+
+**It runs a real, trained network on a RISC-V SoC, bit-exact.** A VexRiscv CPU in a
+[LiteX](https://github.com/enjoy-digital/litex) SoC drives the accelerator's AXI4 DMA from
+bare-metal C and classifies 360 held-out handwritten digits
+([soc/](soc/README.md), cycle-accurate in Verilator, run by CI):
+
+| 64→32→10 INT8 MLP, 360 images | 4×4 array | 8×8 array |
+|---|---:|---:|
+| Accuracy (matches the Python golden model bit for bit) | 353/360 · 98.06 % | 353/360 · 98.06 % |
+| CPU only (VexRiscv RV32IM) | 9.77 M cycles | 9.99 M cycles |
+| Accelerator, CPU does bias/requant | 0.65 M cycles · 14.9× | 0.61 M cycles · 16.3× |
+| **Accelerator, fused per-channel epilogue** | **86.2 k cycles · 113.3×** | **43.4 k cycles · 230.3×** |
+
+The speed-up came from four measured steps
+([details](soc/README.md#how-the-speed-up-was-earned-four-measured-steps)):
+
+| Step | Bottleneck the measurement exposed | Fix | 4×4 / 8×8 |
+|---|---|---|---:|
+| 0 | first working SoC | GEMMs on the accelerator | 11.3× / 12.3× |
+| 1 | CPU epilogue = 66 % of runtime | per-channel bias vector in RTL | 40.6× / 56.6× |
+| 2 | PE array idle ~70 % of the time | pipelined `tiled_gemm_engine` | 73.5× / 105.8× |
+| 3 | DMA throttled by the CPU interconnect | direct burst port into dual-port RAM | **113.3× / 230.3×** |
+
+- **Two new RTL blocks, both measured and verified.**
+  [rtl/tiled_gemm_engine.sv](rtl/tiled_gemm_engine.sv) feeds the array one K vector per cycle
+  (PE utilization 31 % → 80 %). [rtl/axi_dma_mem_port.sv](rtl/axi_dma_mem_port.sv) gives the
+  DMA a burst port into RAM, off the CPU bus (8×8 GEMM 31.1 k → 8.4 k cycles). Both keep the old
+  path selectable, and CI cross-checks them.
+- **End-to-end testing found two real bugs** in the connected DMA top, which had never been
+  simulated as a whole. DONE (and the level IRQ) could never be cleared, and one illegal descriptor
+  wedged the core until hardware reset. Both are fixed and guarded by new mutants
+  ([details](soc/README.md#bugs-the-end-to-end-work-found-in-tiled_axi4_gemm_top)).
+- **Verified with the CI toolchain itself.** OSS CAD Suite: Icarus and Verilator for every bench at
+  N=4 and N=8, SymbiYosys proofs, Yosys and nextpnr-ecp5, and 46/46 seeded mutants killed.
 
 ## What it computes
 
@@ -68,7 +105,7 @@ ReLU, and saturation.
 
 ## FPGA implementation results
 
-**post-route on ECP5 LFE5U-85F, open-source flow**
+**Legacy AXI4-Lite top (`systolic_accel_top`), post-route on ECP5 LFE5U-85F, open-source flow**
 
 | Array N | LUTs | FFs | DSPs | BRAMs | Post-route Fmax | Fit |
 |---:|---:|---:|---:|---:|---:|:---|
@@ -147,6 +184,7 @@ make TB=ml_core N=4          # INT8 ML post-processing
 make TB=stream_gemm N=4      # contiguous matrix stream
 make TB=descriptor           # DMA/ML descriptor registers
 make TB=ml_packer            # packed INT8 post-processing
+make TB=axi4_gemm N=4        # connected AXI4 DMA top, end to end
 make WAVES=1                 # dump an FST waveform
 ~~~
 
@@ -184,13 +222,19 @@ python -m unittest discover -s ml -p 'test_*.py'
   padding, runtime tiling, K accumulation, and row-major result writeback.
 - [rtl/tiled_stream_gemm_top.sv](rtl/tiled_stream_gemm_top.sv) connects streaming matrix inputs to
   the tiled GEMM path.
+- [rtl/tiled_gemm_engine.sv](rtl/tiled_gemm_engine.sv) is the default (`PIPELINED=1`) compute engine:
+  it feeds the array one full K vector per cycle from the on-chip operand buffers, reduces K in one
+  pass and streams finished C rows while later rows compute. `PIPELINED=0` keeps the original
+  buffer/scheduler/chain path as a cross-check.
 - [rtl/tiled_axi4_gemm_top.sv](rtl/tiled_axi4_gemm_top.sv) provides the connected AXI4/DMA-oriented
   integration boundary with raw-INT32 or packed-INT8 output.
 
 The original AXI4-Lite compatibility top remains a focused single-GEMM interface. The tiled ML
-path is intended for larger matrices and neural-network layers. Full FPGA inference results,
-trained-model deployment, and measured hardware throughput are not claimed yet; those are future
-integration steps documented in [docs/upgrade_roadmap.md](docs/upgrade_roadmap.md).
+path is intended for larger matrices and neural-network layers. In packed-INT8 mode it applies
+`POST_BIAS + BIAS[j]` per output column (a 64-entry bias vector at register offset `0x100`), so
+one descriptor computes a complete quantized fully connected layer. Trained-model deployment on a
+simulated RISC-V SoC is in [soc/](soc/README.md). FPGA-board inference and measured hardware
+throughput are future steps documented in [docs/upgrade_roadmap.md](docs/upgrade_roadmap.md).
 
 ## Using the AXI4-Lite accelerator
 
@@ -219,12 +263,23 @@ GitHub Actions runs on every push and pull request. The workflow checks:
 - Generic Yosys synthesis and latch checks
 - ECP5-85K place-and-route resource and timing reports
 - FVIP-derived formal AXI-Lite and AXI4 DMA protocol properties, plus ping-pong ownership properties
+- Direct DMA memory port (`TB=mem_port`): concurrent bursts, round-robin fairness, WSTRB, back-pressure,
+  one-beat-per-cycle throughput, out-of-range SLVERR
+- End-to-end regression of the connected AXI4 DMA top (`TB=axi4_gemm`) against AXI memory models
+  with random back-pressure: INT32/INT8 writeback, per-channel bias, illegal descriptors, IRQ.
+  Runs on both the pipelined engine and the reference path (`PIPELINED=0`)
+- RISC-V SoC simulation (VexRiscv + LiteX; N=4 and N=8 with the direct memory port, plus N=4 via the
+  CPU bus): firmware self-test plus the trained digits MLP, which must be bit-exact with the Python
+  golden model
 
 The suite compares results with independent references and checks AXI response ordering, W-before-AW
 writes, delayed RREADY, byte strobes, error responses, back-to-back runs, and reset behavior.
-Mutation testing detects all 30 deliberately seeded mutants; the two DMA 4KB-boundary
-mutants are killed by formal proofs and the other 28 run at N = 4 and N = 8.
-That 30/30 score describes only the listed mutation set; it is not a claim that the
+Mutation testing detects all 46 deliberately seeded mutants; the two DMA 4KB-boundary
+mutants are killed by formal proofs and the other 44 run at N = 4 and N = 8. Mutants
+M31–M36 re-introduce the two connected-top bugs and break the per-channel bias logic;
+M37–M41 break the pipelined engine; M42–M46 break the DMA memory port (strobes, range
+check, skid-buffer throughput, arbitration fairness, error writes).
+That 46/46 score describes only the listed mutation set; it is not a claim that the
 tests cover every possible RTL defect.
 
 See [docs/verification_matrix.md](docs/verification_matrix.md) for the evidence table and
@@ -245,6 +300,8 @@ See [docs/verification_matrix.md](docs/verification_matrix.md) for the evidence 
 | constraints/ | Timing constraints |
 | fpga/ | FPGA handoff material and platform notes |
 | sw/ | Portable C interface and compile checks |
+| soc/ | VexRiscv/LiteX SoC, bare-metal firmware, trained-model export, SoC run script |
+| docs/results/ | Committed SoC console logs, result JSON and ideal-memory benchmark CSVs |
 
 ## Important design notes
 
@@ -264,6 +321,7 @@ See [docs/verification_matrix.md](docs/verification_matrix.md) for the evidence 
 - [Matrix/tile buffer](docs/matrix_tile_buffer.md)
 - [Benchmark methodology](docs/benchmark_methodology.md)
 - [Physical-design targets](docs/physical_design_targets.md)
+- [RISC-V SoC integration and results](soc/README.md)
 - [Upgrade roadmap](docs/upgrade_roadmap.md)
 
 ## License
