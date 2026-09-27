@@ -1,6 +1,10 @@
 // -----------------------------------------------------------------------------
 // tiled_axi4_gemm_top.sv - connected AXI4 DMA + tiled GEMM composition.
 //
+// Control writes program tiled_dma_shell. Offsets 0x100 + 4*j (j < MAX_N)
+// form a per-output-channel INT32 bias vector for the packed-INT8 epilogue:
+// element (i, j) is requantised with POST_BIAS + BIAS[j]. The vector resets to
+// zero, so software that only uses the scalar POST_BIAS sees no change.
 // Control writes program tiled_dma_shell. Its A/B read streams feed the
 // matrix/tile buffer and tiled_stream_gemm_top; the row-major INT32 result
 // stream feeds the shell's C write DMA. The original AXI4-Lite accelerator
@@ -15,7 +19,9 @@ module tiled_axi4_gemm_top #(
     parameter int ARRAY_N   = 4,
     parameter int MAX_M     = 64,
     parameter int MAX_N     = 64,
-    parameter int MAX_K     = 64
+    parameter int MAX_K     = 64,
+    // 1: pipelined tiled_gemm_engine; 0: reference buffer/scheduler/chain path.
+    parameter int PIPELINED = 1
 ) (
     input wire clk, input wire rst_n,
     input wire reg_wr_en, input wire [11:0] reg_wr_addr,
@@ -43,6 +49,20 @@ module tiled_axi4_gemm_top #(
     output wire c_axi_wlast, output wire c_axi_wvalid, input wire c_axi_wready,
     input wire [1:0] c_axi_bresp, input wire c_axi_bvalid, output wire c_axi_bready
 );
+
+    // ---- per-channel bias window (0x100 .. 0x100 + 4*MAX_N - 4) ----------
+    localparam int BIAS_BASE = 12'h100;
+    localparam int COL_W = (MAX_N > 1) ? $clog2(MAX_N) : 1;  // index into bias_vec
+    logic signed [31:0] bias_vec [MAX_N];
+    logic [COL_W-1:0] out_col_q;
+    wire [11:0] bias_wr_off = reg_wr_addr - 12'(BIAS_BASE);
+    wire [11:0] bias_rd_off = reg_rd_addr - 12'(BIAS_BASE);
+    wire bias_wr_hit = (reg_wr_addr >= 12'(BIAS_BASE)) &&
+                       (reg_wr_addr < 12'(BIAS_BASE + 4 * MAX_N));
+    wire bias_rd_hit = (reg_rd_addr >= 12'(BIAS_BASE)) &&
+                       (reg_rd_addr < 12'(BIAS_BASE + 4 * MAX_N));
+    wire [31:0] shell_rd_data;
+    wire [1:0] shell_rd_resp, shell_wr_resp;
 
     wire shell_job_start, shell_job_busy, shell_job_done, shell_job_error;
     wire compute_busy, compute_done, compute_error;
@@ -90,12 +110,13 @@ module tiled_axi4_gemm_top #(
     wire unused_status = shell_job_busy ^ shell_job_done ^ shell_job_error ^
                          (^shell_bias) ^ (^shell_scale) ^ shell_relu ^ (^shell_shift) ^ shell_output_int8;
 
-    tiled_dma_shell #(.ADDR_W(ADDR_W), .DATA_W(DATA_W), .MAX_BURST(MAX_BURST)) u_dma (
+    tiled_dma_shell #(.ADDR_W(ADDR_W), .DATA_W(DATA_W), .MAX_BURST(MAX_BURST),
+                      .ARRAY_N(ARRAY_N), .MAX_M(MAX_M), .MAX_N(MAX_N), .MAX_K(MAX_K)) u_dma (
         .clk(clk), .rst_n(rst_n),
-        .reg_wr_en(reg_wr_en), .reg_wr_addr(reg_wr_addr), .reg_wr_data(reg_wr_data),
-        .reg_wr_strb(reg_wr_strb), .reg_wr_resp(reg_wr_resp),
-        .reg_rd_addr(reg_rd_addr), .reg_rd_data(reg_rd_data),
-        .reg_rd_resp(reg_rd_resp), .irq(irq),
+        .reg_wr_en(reg_wr_en && !bias_wr_hit), .reg_wr_addr(reg_wr_addr),
+        .reg_wr_data(reg_wr_data), .reg_wr_strb(reg_wr_strb), .reg_wr_resp(shell_wr_resp),
+        .reg_rd_addr(reg_rd_addr), .reg_rd_data(shell_rd_data),
+        .reg_rd_resp(shell_rd_resp), .irq(irq),
         .job_start(shell_job_start), .job_busy(shell_job_busy),
         .job_done(shell_job_done), .job_error(shell_job_error),
         .job_matrix_m(shell_m), .job_matrix_n(shell_n), .job_matrix_k(shell_k),
@@ -133,8 +154,38 @@ module tiled_axi4_gemm_top #(
 
     assign raw_c_ready = shell_output_int8 ? ml_stream_ready : c_stream_ready;
 
+    // Bias window: writable only while idle (SLVERR otherwise, like the
+    // descriptor registers); reads are always allowed.
+    assign reg_wr_resp = !bias_wr_hit ? shell_wr_resp :
+                         (reg_wr_en && shell_job_busy) ? 2'b10 : 2'b00;
+    assign reg_rd_data = bias_rd_hit ? bias_vec[bias_rd_off[COL_W+1:2]] : shell_rd_data;
+    assign reg_rd_resp = bias_rd_hit ? 2'b00 : shell_rd_resp;
+
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            for (int j = 0; j < MAX_N; j++) bias_vec[j] <= 0;
+        end else if (reg_wr_en && bias_wr_hit && !shell_job_busy) begin
+            for (int i = 0; i < 4; i++)
+                if (reg_wr_strb[i])
+                    bias_vec[bias_wr_off[COL_W+1:2]][i*8 +: 8] <= reg_wr_data[i*8 +: 8];
+        end
+    end
+
+    // Output column of the element entering the packer. The raw result stream
+    // is row-major M x N, so the column wraps at N.
+    wire packer_accept = raw_c_valid && shell_output_int8 && ml_stream_ready;
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n)
+            out_col_q <= '0;
+        else if (shell_job_start)
+            out_col_q <= '0;
+        else if (packer_accept)
+            out_col_q <= (32'(out_col_q) + 1 >= shell_n) ? '0 : out_col_q + 1'b1;
+    end
+    wire signed [31:0] element_bias = shell_bias + bias_vec[out_col_q];
+
     ml_int8_packer u_ml_packer (
-        .clk(clk), .rst_n(rst_n), .bias(shell_bias), .scale_mult(shell_scale),
+        .clk(clk), .rst_n(rst_n), .bias(element_bias), .scale_mult(shell_scale),
         .relu_en(shell_relu), .scale_shift(shell_shift),
         .in_valid(raw_c_valid && shell_output_int8), .in_ready(ml_stream_ready),
         .in_data(raw_c_data), .in_last(raw_c_last),
@@ -146,7 +197,8 @@ module tiled_axi4_gemm_top #(
     assign c_stream_valid = shell_output_int8 ? ml_stream_valid : raw_c_valid;
     assign c_stream_last = shell_output_int8 ? ml_stream_last : raw_c_last;
 
-    tiled_stream_gemm_top #(.ARRAY_N(ARRAY_N), .MAX_M(MAX_M), .MAX_N(MAX_N), .MAX_K(MAX_K)) u_compute (
+    tiled_stream_gemm_top #(.ARRAY_N(ARRAY_N), .MAX_M(MAX_M), .MAX_N(MAX_N), .MAX_K(MAX_K),
+                            .PIPELINED(PIPELINED)) u_compute (
         .clk(clk), .rst_n(rst_n), .start_job(shell_job_start),
         .matrix_m(shell_m), .matrix_n(shell_n), .matrix_k(shell_k),
         .tile_m_cfg(shell_tm), .tile_n_cfg(shell_tn), .tile_k_cfg(shell_tk),

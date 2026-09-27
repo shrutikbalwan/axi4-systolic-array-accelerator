@@ -14,6 +14,7 @@
         "dir::../rtl/tiled_compute_chain.sv",
         "dir::../rtl/tiled_gemm_controller.sv",
         "dir::../rtl/tiled_matrix_tile_buffer.sv",
+        "dir::../rtl/tiled_gemm_engine.sv",
         "dir::../rtl/tiled_stream_gemm_top.sv",
         "dir::../rtl/axi4_read_dma.sv",
         "dir::../rtl/axi4_write_dma.sv",

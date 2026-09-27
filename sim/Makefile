@@ -13,6 +13,9 @@
 #   make TB=stream_gemm N=4       # contiguous matrices through tile buffering
 #   make TB=descriptor            # DMA/ML descriptor register regression
 #   make TB=ml_packer             # INT32 to packed INT8 post-processing
+#   make TB=axi4_gemm             # connected AXI4 DMA + tiled GEMM top, end to end
+#   make TB=axi4_gemm PIPELINED=0 # same, on the reference (non-pipelined) compute path
+#   make TB=mem_port              # direct DMA burst port into RAM (SoC memory path)
 #   make WAVES=1                  # dump waveforms (FST)
 #
 # Each (SIM, TB, N, KMAX) combination gets its own build directory, so a
@@ -24,6 +27,8 @@ N            ?= 4
 ARRAY_N      ?= $(N)
 KMAX         ?= 16
 MAX_BURST    ?= 4
+# 1: pipelined tiled_gemm_engine, 0: reference tile buffer/scheduler/chain path
+PIPELINED    ?= 1
 TOPLEVEL_LANG = verilog
 
 # Relative on purpose: make cannot handle spaces in absolute paths.
@@ -101,8 +106,9 @@ else ifeq ($(TB),stream_gemm)
                         $(RTL_DIR)/tile_scheduler.sv \
                         $(RTL_DIR)/tiled_gemm_controller.sv \
                         $(RTL_DIR)/tiled_matrix_tile_buffer.sv \
+                        $(RTL_DIR)/tiled_gemm_engine.sv \
                         $(RTL_DIR)/tiled_stream_gemm_top.sv
-  PARAMS              = ARRAY_N
+  PARAMS              = ARRAY_N PIPELINED
 else ifeq ($(TB),descriptor)
   COCOTB_TOPLEVEL     = dma_descriptor_ctrl
   COCOTB_TEST_MODULES = test_dma_descriptor
@@ -112,6 +118,33 @@ else ifeq ($(TB),ml_packer)
   COCOTB_TOPLEVEL     = ml_int8_packer
   COCOTB_TEST_MODULES = test_ml_int8_packer
   VERILOG_SOURCES     = $(RTL_DIR)/ml_int8_packer.sv
+  PARAMS              =
+else ifeq ($(TB),axi4_gemm)
+  COCOTB_TOPLEVEL     = tiled_axi4_gemm_top
+  COCOTB_TEST_MODULES = test_axi4_gemm_top
+  VERILOG_SOURCES     = $(RTL_DIR)/pe_mac.sv \
+                        $(RTL_DIR)/systolic_array.sv \
+                        $(RTL_DIR)/ml_postprocess.sv \
+                        $(RTL_DIR)/ml_int8_packer.sv \
+                        $(RTL_DIR)/tile_scheduler.sv \
+                        $(RTL_DIR)/tile_accumulator.sv \
+                        $(RTL_DIR)/axi4_read_dma.sv \
+                        $(RTL_DIR)/axi4_write_dma.sv \
+                        $(RTL_DIR)/dma_descriptor_ctrl.sv \
+                        $(RTL_DIR)/systolic_tile_adapter.sv \
+                        $(RTL_DIR)/tiled_compute_chain.sv \
+                        $(RTL_DIR)/tiled_gemm_controller.sv \
+                        $(RTL_DIR)/tiled_matrix_tile_buffer.sv \
+                        $(RTL_DIR)/tiled_gemm_engine.sv \
+                        $(RTL_DIR)/tiled_stream_gemm_top.sv \
+                        $(RTL_DIR)/tiled_dma_shell.sv \
+                        $(RTL_DIR)/tiled_axi4_gemm_top.sv
+  PARAMS              = ARRAY_N MAX_BURST PIPELINED
+else ifeq ($(TB),mem_port)
+  COCOTB_TOPLEVEL     = tb_axi_dma_mem_port
+  COCOTB_TEST_MODULES = test_axi_dma_mem_port
+  VERILOG_SOURCES     = $(RTL_DIR)/axi_dma_mem_port.sv \
+                        ../tb/tb_axi_dma_mem_port.sv
   PARAMS              =
 else ifeq ($(TB),accel)
   COCOTB_TOPLEVEL     = systolic_accel_top
@@ -137,10 +170,10 @@ else ifeq ($(TB),accel)
                         $(RTL_DIR)/systolic_accel_top.sv
   PARAMS              = N KMAX
 else
-  $(error TB must be "accel", "array", "tile", "scheduler", "chain", "read_dma", "write_dma", "tiled", "ml_core", "stream_gemm", "descriptor" or "ml_packer")
+  $(error TB must be "accel", "array", "tile", "scheduler", "chain", "read_dma", "write_dma", "tiled", "ml_core", "stream_gemm", "descriptor", "ml_packer", "axi4_gemm" or "mem_port")
 endif
 
-SIM_BUILD := sim_build/$(SIM)_$(TB)_N$(N)_K$(KMAX)
+SIM_BUILD := sim_build/$(SIM)_$(TB)_N$(N)_K$(KMAX)_P$(PIPELINED)
 
 # The tests read N / ARRAY_N / KMAX from the environment.
 export N ARRAY_N KMAX

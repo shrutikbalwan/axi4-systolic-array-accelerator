@@ -22,6 +22,7 @@
         "dir::../rtl/tiled_gemm_controller.sv",
         "dir::../rtl/tiled_ml_inference_core.sv",
         "dir::../rtl/tiled_matrix_tile_buffer.sv",
+        "dir::../rtl/tiled_gemm_engine.sv",
         "dir::../rtl/tiled_stream_gemm_top.sv",
         "dir::../rtl/tiled_dma_shell.sv",
         "dir::../rtl/tiled_axi4_gemm_top.sv",

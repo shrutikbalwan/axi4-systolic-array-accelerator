@@ -1,0 +1,106 @@
+=== VexRiscv + 4x4 INT8 systolic accelerator ===
+
+RESULT array_n=4
+
+
+[1] GEMM self-test (random INT8, full range)
+
+    M= 4 N= 4 K= 4  ok    accel     481 cyc  cpu     3651 cyc
+
+    M= 1 N= 1 K= 1  ok    accel     260 cyc  cpu      146 cyc
+
+    M= 5 N= 6 K= 9  ok    accel     350 cyc  cpu     8827 cyc
+
+    M= 7 N= 3 K=13  ok    accel     340 cyc  cpu     6464 cyc
+
+    M=16 N=12 K=33  ok    accel    1070 cyc  cpu    87672 cyc
+
+    M= 3 N=17 K=64  ok    accel    1040 cyc  cpu    41252 cyc
+
+    M=64 N=64 K=64  ok    accel   21400 cyc  cpu  2918800 cyc
+
+RESULT gemm64_accel_cycles=21400
+
+RESULT gemm64_accel_active=21159
+
+RESULT gemm64_cpu_cycles=2918800
+
+    M=33 N=31 K=47  ok    accel    5140 cyc  cpu   587284 cyc
+
+
+[2] Illegal descriptor handling
+
+    TILE_M=3 rejected with ERROR, never BUSY; next job correct: yes
+
+
+[3] Digits MLP 64-32-10, 360 images, GEMMs on the accelerator
+
+[3b] Same, with bias/requantise/ReLU fused into the accelerator
+
+[4] Same network on the CPU only
+
+
+[5] Results
+
+    accuracy (accelerator)   : 353/360
+
+    accuracy (fused accel)   : 353/360
+
+    accuracy (CPU only)      : 353/360
+
+    bit-exact vs Python      : hidden crc df1885b8, logits crc 18ca1eec -> MATCH
+
+    end-to-end cycles, accel : 653836  (GEMM jobs 81451, compute-active 78277, epilogue 569596)
+
+    end-to-end cycles, fused : 86181  (compute-active 78138)
+
+    end-to-end cycles, CPU   : 9767474  (epilogue 569457)
+
+    useful MACs              : 852480 (accel counted 852480)
+
+    speed-up, whole network  : 14.93x
+
+    speed-up, fused network  : 113.33x
+
+    speed-up, GEMM only      : 112.92x
+
+RESULT images=360
+
+RESULT accel_correct=353
+
+RESULT cpu_correct=353
+
+RESULT golden_correct=353
+
+RESULT hidden_crc=df1885b8
+
+RESULT logits_crc=18ca1eec
+
+RESULT mlp_accel_cycles=653836
+
+RESULT mlp_accel_gemm_cycles=81451
+
+RESULT mlp_accel_active_cycles=78277
+
+RESULT mlp_accel_epilogue_cycles=569596
+
+RESULT fused_correct=353
+
+RESULT fused_hidden_crc=df1885b8
+
+RESULT fused_logits_crc=18ca1eec
+
+RESULT mlp_fused_cycles=86181
+
+RESULT mlp_fused_active_cycles=78138
+
+RESULT mlp_cpu_cycles=9767474
+
+RESULT mlp_cpu_epilogue_cycles=569457
+
+RESULT macs=852480
+
+RESULT failures=0
+
+
+SOC TEST PASSED

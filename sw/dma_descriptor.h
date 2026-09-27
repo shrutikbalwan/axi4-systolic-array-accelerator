@@ -22,6 +22,13 @@
 #define DMA_PERF_MAC_LO   0x003Cu
 #define DMA_PERF_MAC_HI   0x0040u
 #define DMA_PERF_TILES    0x0044u
+/* Per-output-channel INT32 bias for the packed-INT8 epilogue (connected top).
+ * Element (i, j) uses POST_BIAS + BIAS[j]. Resets to zero; writable only
+ * while idle. DMA_BIAS_MAX must not exceed the RTL's MAX_N parameter. */
+#define DMA_BIAS_VEC(j)   (0x0100u + 4u * (uint32_t)(j))
+#ifndef DMA_BIAS_MAX
+#define DMA_BIAS_MAX      64u
+#endif
 
 #define DMA_CTRL_START    (1u << 0)
 #define DMA_CTRL_ABORT    (1u << 1)
@@ -68,6 +75,15 @@ static inline void accel_dma_program(const accel_device_t *dev,
     accel_write(dev, DMA_POST_BIAS, (uint32_t)d->post_bias);
     accel_write(dev, DMA_POST_SCALE, (uint32_t)d->post_scale_mult);
     accel_write(dev, DMA_POST_CFG, d->post_cfg);
+}
+
+/* Load bias[0..n-1] for a layer with N = n output columns. Entries >= N are
+ * never read (the RTL column counter wraps at N), so stale values left by a
+ * previous, wider layer are harmless and need not be cleared. */
+static inline void accel_dma_load_bias(const accel_device_t *dev,
+                                       const int32_t *bias, uint32_t n) {
+    for (uint32_t j = 0; j < n && j < DMA_BIAS_MAX; j++)
+        accel_write(dev, DMA_BIAS_VEC(j), (uint32_t)bias[j]);
 }
 
 static inline void accel_dma_start(const accel_device_t *dev, int irq_enable) {

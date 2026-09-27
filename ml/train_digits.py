@@ -19,7 +19,13 @@ from quantized_mlp import Int8Tensor, QuantizedLinear, QuantizedMLP, quantize_sy
 from tiled_inference import SoftwareGemmBackend
 
 
-def build_model(seed: int, max_iter: int):
+def train_quantized(seed: int, max_iter: int):
+    """Train the float MLP and convert it to the INT8 contract.
+
+    Returns ``(qmlp, xq_test, y_test, pred_float)`` so other tools (for example
+    ``soc/gen_model.py``, which bakes the model into RISC-V firmware) use
+    exactly the same network as the accuracy report below.
+    """
     from sklearn.datasets import load_digits
     from sklearn.model_selection import train_test_split
     from sklearn.neural_network import MLPClassifier
@@ -51,6 +57,11 @@ def build_model(seed: int, max_iter: int):
     )
     xq = quantize_symmetric(x_test)
     pred_float = fp.predict(x_test)
+    return qmlp, xq, y_test, pred_float
+
+
+def build_model(seed: int, max_iter: int):
+    qmlp, xq, y_test, pred_float = train_quantized(seed, max_iter)
     pred_quant = qmlp.run(
         xq,
         tile_m=4,

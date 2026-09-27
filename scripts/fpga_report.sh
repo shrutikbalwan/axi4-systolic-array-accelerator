@@ -23,6 +23,7 @@ rtl=(
   rtl/tiled_gemm_controller.sv
   rtl/tiled_ml_inference_core.sv
   rtl/tiled_matrix_tile_buffer.sv
+  rtl/tiled_gemm_engine.sv
   rtl/tiled_stream_gemm_top.sv
   rtl/tiled_dma_shell.sv
   rtl/tiled_axi4_gemm_top.sv

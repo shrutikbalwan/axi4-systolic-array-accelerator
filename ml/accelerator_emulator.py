@@ -27,6 +27,9 @@ class AcceleratorDescriptor:
     post_shift: int = 0
     relu: bool = False
     output_int8: bool = False
+    # Per-output-channel bias added to post_bias in the INT8 epilogue
+    # (register window 0x100 + 4*j of tiled_axi4_gemm_top). None == all zero.
+    bias_vector: tuple[int, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -74,8 +77,14 @@ def execute_descriptor(
         tile_k=descriptor.tile_k,
     )
     if descriptor.output_int8:
+        bias = np.int64(descriptor.post_bias)
+        if descriptor.bias_vector is not None:
+            vec = np.asarray(descriptor.bias_vector, dtype=np.int64)
+            if vec.shape != (descriptor.matrix_n,):
+                raise ValueError("bias_vector must have matrix_n entries")
+            bias = bias + vec[None, :]
         output = requantize_int32(
-            accumulator, descriptor.post_bias, descriptor.post_scale,
+            accumulator, bias, descriptor.post_scale,
             descriptor.post_shift, relu=descriptor.relu,
         )
         writeback_words = _pack_int8(output)
