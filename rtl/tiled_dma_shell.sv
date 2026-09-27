@@ -13,7 +13,13 @@
 module tiled_dma_shell #(
     parameter int ADDR_W    = 32,
     parameter int DATA_W    = 32,
-    parameter int MAX_BURST = 16
+    parameter int MAX_BURST = 16,
+    // Descriptor legality limits. The connected top passes its real array and
+    // buffer sizes; the defaults match tiled_axi4_gemm_top's defaults.
+    parameter int ARRAY_N   = 4,
+    parameter int MAX_M     = 64,
+    parameter int MAX_N     = 64,
+    parameter int MAX_K     = 64
 ) (
     input  wire                    clk,
     input  wire                    rst_n,
@@ -102,11 +108,14 @@ module tiled_dma_shell #(
     input  wire                    c_stream_last
 );
 
-    wire dma_start;
+    wire dma_start;        // START accepted by the register block (not busy)
+    wire job_accept;       // ... and the descriptor is legal: movers/compute run
     wire dma_abort;
     wire dma_busy;
-    wire dma_done;
-    wire dma_error;
+    wire all_complete;     // level: every mover and the compute path finished
+    wire any_error;        // level: a mover or the compute path reports error
+    wire dma_done;         // one-cycle completion event into the register block
+    wire dma_error;        // one-cycle error event into the register block
     wire irq_en_unused;
     wire [31:0] a_base, b_base, c_base;
     wire [31:0] matrix_m, matrix_n, matrix_k;
@@ -133,12 +142,61 @@ module tiled_dma_shell #(
 
     assign dma_busy  = a_busy || b_busy || c_busy || compute_busy_in;
     logic a_complete_q, b_complete_q, c_complete_q, compute_complete_q;
-    assign dma_done  = (a_complete_q || a_done) &&
-                       (b_complete_q || b_done) &&
-                       (c_complete_q || c_done) &&
-                       (compute_complete_q || compute_done_in);
-    assign dma_error = a_error || b_error || c_error || compute_error_in;
-    assign job_start = dma_start;
+    assign all_complete = (a_complete_q || a_done) &&
+                          (b_complete_q || b_done) &&
+                          (c_complete_q || c_done) &&
+                          (compute_complete_q || compute_done_in);
+    assign any_error = a_error || b_error || c_error || compute_error_in;
+
+    // ---------------------------------------------------------------------
+    // Descriptor admission. An illegal descriptor used to reach the movers
+    // and the tile buffer: the scheduler flagged ERROR, but the buffer then
+    // waited forever for a compute-done that never came, so BUSY stayed high
+    // until hardware reset. START is now checked here, before anything moves;
+    // a rejected START raises ERROR one cycle later and leaves the core idle.
+    // ---------------------------------------------------------------------
+    wire tile_mn_ok = (tile_m_unused != 0) && (tile_m_unused <= ARRAY_N) &&
+                      (tile_m_unused[1:0] == 2'd0) &&
+                      (tile_n_unused != 0) && (tile_n_unused <= ARRAY_N) &&
+                      (tile_n_unused[1:0] == 2'd0);
+    wire tile_k_ok  = (tile_k_unused != 0) && (tile_k_unused <= MAX_K);
+    wire dims_ok    = (matrix_m != 0) && (matrix_m <= MAX_M) &&
+                      (matrix_n != 0) && (matrix_n <= MAX_N) &&
+                      (matrix_k != 0) && (matrix_k <= MAX_K);
+    wire align_ok   = (a_base[1:0] == 2'd0) && (b_base[1:0] == 2'd0) &&
+                      (c_base[1:0] == 2'd0);
+    wire desc_legal = tile_mn_ok && tile_k_ok && dims_ok && align_ok;
+    assign job_accept = dma_start && desc_legal;
+
+    // DONE/ERROR are sticky, write-one-to-clear bits in dma_descriptor_ctrl,
+    // which sets them whenever its dma_done/dma_error inputs are high. The
+    // completion and mover-error signals here are levels that stay high until
+    // the next START, so feeding them straight through made DONE (and the
+    // level IRQ) impossible to clear. Report each job's completion and first
+    // error exactly once instead.
+    logic done_reported_q, error_reported_q, reject_q;
+    assign dma_done  = all_complete && !done_reported_q && !dma_start;
+    assign dma_error = (any_error && !error_reported_q && !dma_start) || reject_q;
+
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            done_reported_q  <= 1'b1;   // nothing to report out of reset
+            error_reported_q <= 1'b0;
+            reject_q         <= 1'b0;
+        end else begin
+            reject_q <= dma_start && !desc_legal;
+            if (dma_start) begin
+                // A rejected START must not report a stale completion.
+                done_reported_q  <= !desc_legal;
+                error_reported_q <= 1'b0;
+            end else begin
+                if (dma_done)  done_reported_q  <= 1'b1;
+                if (any_error) error_reported_q <= 1'b1;
+            end
+        end
+    end
+
+    assign job_start = job_accept;
     assign job_busy = dma_busy;
     assign job_done = dma_done;
     assign job_error = dma_error;
@@ -160,7 +218,7 @@ module tiled_dma_shell #(
             b_complete_q <= 1'b0;
             c_complete_q <= 1'b0;
             compute_complete_q <= 1'b0;
-        end else if (dma_start) begin
+        end else if (job_accept) begin
             a_complete_q <= 1'b0;
             b_complete_q <= 1'b0;
             c_complete_q <= 1'b0;
@@ -211,7 +269,7 @@ module tiled_dma_shell #(
     );
 
     axi4_read_dma #(.ADDR_W(ADDR_W), .DATA_W(DATA_W), .MAX_BURST(MAX_BURST)) u_a_dma (
-        .clk(clk), .rst_n(rst_n), .start(dma_start), .base_addr(a_base),
+        .clk(clk), .rst_n(rst_n), .start(job_accept), .base_addr(a_base),
         .word_count(a_words[31:0]), .busy(a_busy), .done(a_done), .error(a_error),
         .m_axi_araddr(a_axi_araddr), .m_axi_arlen(a_axi_arlen),
         .m_axi_arsize(a_axi_arsize), .m_axi_arburst(a_axi_arburst),
@@ -224,7 +282,7 @@ module tiled_dma_shell #(
     );
 
     axi4_read_dma #(.ADDR_W(ADDR_W), .DATA_W(DATA_W), .MAX_BURST(MAX_BURST)) u_b_dma (
-        .clk(clk), .rst_n(rst_n), .start(dma_start), .base_addr(b_base),
+        .clk(clk), .rst_n(rst_n), .start(job_accept), .base_addr(b_base),
         .word_count(b_words[31:0]), .busy(b_busy), .done(b_done), .error(b_error),
         .m_axi_araddr(b_axi_araddr), .m_axi_arlen(b_axi_arlen),
         .m_axi_arsize(b_axi_arsize), .m_axi_arburst(b_axi_arburst),
@@ -237,7 +295,7 @@ module tiled_dma_shell #(
     );
 
     axi4_write_dma #(.ADDR_W(ADDR_W), .DATA_W(DATA_W), .MAX_BURST(MAX_BURST)) u_c_dma (
-        .clk(clk), .rst_n(rst_n), .start(dma_start), .base_addr(c_base),
+        .clk(clk), .rst_n(rst_n), .start(job_accept), .base_addr(c_base),
         .word_count(c_words[31:0]), .busy(c_busy), .done(c_done), .error(c_error),
         .m_axi_awaddr(c_axi_awaddr), .m_axi_awlen(c_axi_awlen),
         .m_axi_awsize(c_axi_awsize), .m_axi_awburst(c_axi_awburst),
