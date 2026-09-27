@@ -112,3 +112,46 @@ jobs:
       - name: Prove ping-pong ownership properties
         working-directory: formal
         run: sby -f ping_pong_bank_manager.sby
+
+  riscv-soc:
+    # Boots a VexRiscv LiteX SoC in Verilator with tiled_axi4_gemm_top on the
+    # bus, runs the bare-metal firmware in soc/firmware and fails unless the
+    # INT8 digits MLP is bit-exact with the Python golden model.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        array_n: [4, 8]
+        mem_port: [direct]
+        include:
+          # The original path through the CPU interconnect stays tested too.
+          - array_n: 4
+            mem_port: bus
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Install Verilator
+        uses: YosysHQ/setup-oss-cad-suite@v4
+        with:
+          github-token: ${{ github.token }}
+
+      - name: Install RISC-V toolchain and simulator libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-riscv64-unknown-elf libevent-dev libjson-c-dev meson ninja-build
+
+      - name: Install pinned LiteX stack
+        run: bash soc/install_litex.sh
+
+      - name: Build SoC + firmware and run the simulation
+        run: python3 soc/run_soc_sim.py --array-n ${{ matrix.array_n }} --mem-port ${{ matrix.mem_port }}
+
+      - name: Upload SoC console and results
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: riscv-soc-n${{ matrix.array_n }}-${{ matrix.mem_port }}
+          path: |
+            build/soc/n*/console.log
+            build/soc/n*/results.json
