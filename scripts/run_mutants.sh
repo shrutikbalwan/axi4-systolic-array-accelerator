@@ -39,9 +39,13 @@ while IFS=$'\t' read -r id tb desc; do
         printf '%-4s %-9s %-60s%s\n' "$id" "$verdict" "$desc" "$detail"
         continue
     fi
+    # "tb:P0" runs the bench on the reference (PIPELINED=0) compute path, for
+    # mutants in modules the default pipelined engine does not instantiate.
+    pipelined=1
+    if [[ "$tb" == *:P0 ]]; then pipelined=0; tb="${tb%:P0}"; fi
     for n in 4 8; do
         log="$WORK/$id/N$n.log"
-        (cd sim && make SIM="$SIM" TB="$tb" N="$n" RTL_DIR="$WORK/$id/rtl" \
+        (cd sim && make SIM="$SIM" TB="$tb" N="$n" PIPELINED="$pipelined" RTL_DIR="$WORK/$id/rtl" \
             SIM_BUILD="$WORK/$id/build_N$n" COCOTB_RESULTS_FILE="$WORK/$id/results_N$n.xml" \
             > "$log" 2>&1)
         fails=$(grep -oE 'FAIL=[0-9]+' "$log" | tail -1 | cut -d= -f2)

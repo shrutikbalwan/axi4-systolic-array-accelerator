@@ -13,7 +13,7 @@ cd "$(dirname "$0")/.."
 SIMS=${SIMS:-"icarus verilator"}
 SIZES=${SIZES:-"4 8"}
 PYTHON=${PYTHON:-python3}
-RTL="rtl/reset_sync.sv rtl/pe_mac.sv rtl/systolic_array.sv rtl/ml_postprocess.sv rtl/ml_int8_packer.sv rtl/tile_scheduler.sv rtl/dual_bank_buffer.sv rtl/ping_pong_bank_manager.sv rtl/tile_accumulator.sv rtl/axi4_read_dma.sv rtl/axi4_write_dma.sv rtl/dma_descriptor_ctrl.sv rtl/systolic_tile_adapter.sv rtl/tiled_compute_chain.sv rtl/tiled_gemm_controller.sv rtl/tiled_ml_inference_core.sv rtl/tiled_matrix_tile_buffer.sv rtl/tiled_stream_gemm_top.sv rtl/tiled_dma_shell.sv rtl/tiled_axi4_gemm_top.sv rtl/axi_lite_slave.sv rtl/accel_ctrl.sv rtl/systolic_accel_top.sv"
+RTL="rtl/reset_sync.sv rtl/pe_mac.sv rtl/systolic_array.sv rtl/ml_postprocess.sv rtl/ml_int8_packer.sv rtl/tile_scheduler.sv rtl/dual_bank_buffer.sv rtl/ping_pong_bank_manager.sv rtl/tile_accumulator.sv rtl/axi4_read_dma.sv rtl/axi4_write_dma.sv rtl/dma_descriptor_ctrl.sv rtl/systolic_tile_adapter.sv rtl/tiled_compute_chain.sv rtl/tiled_gemm_controller.sv rtl/tiled_ml_inference_core.sv rtl/tiled_matrix_tile_buffer.sv rtl/tiled_gemm_engine.sv rtl/tiled_stream_gemm_top.sv rtl/tiled_dma_shell.sv rtl/tiled_axi4_gemm_top.sv rtl/axi_dma_mem_port.sv rtl/axi_lite_slave.sv rtl/accel_ctrl.sv rtl/systolic_accel_top.sv"
 BUILD=${BUILD:-build}
 mkdir -p "$BUILD"
 
@@ -97,7 +97,7 @@ fi
 
 echo "== cocotb regression =="
 for sim in $SIMS; do
-    for tb in array accel tile scheduler chain read_dma write_dma tiled ml_core stream_gemm descriptor ml_packer; do
+    for tb in array accel tile scheduler chain read_dma write_dma tiled ml_core stream_gemm descriptor ml_packer axi4_gemm mem_port; do
         for n in $SIZES; do
             log="$BUILD/cocotb_${sim}_${tb}_N$n.log"
             (cd sim && make SIM="$sim" TB="$tb" N="$n" \
@@ -107,6 +107,22 @@ for sim in $SIMS; do
                 tail -40 "$log"; echo "   $sim $tb N=$n FAILED"; exit 1
             fi
             echo "   $sim $tb N=$n: $summary"
+        done
+    done
+done
+
+echo "== reference (PIPELINED=0) compute path cross-check =="
+for sim in $SIMS; do
+    for tb in stream_gemm axi4_gemm; do
+        for n in $SIZES; do
+            log="$BUILD/cocotb_${sim}_${tb}_ref_N$n.log"
+            (cd sim && make SIM="$sim" TB="$tb" N="$n" PIPELINED=0 \
+                COCOTB_RESULTS_FILE="results_${sim}_${tb}_ref_N$n.xml" > "../$log" 2>&1) || true
+            summary=$(grep -oE 'TESTS=[0-9]+ PASS=[0-9]+ FAIL=[0-9]+' "$log" | tail -1)
+            if [ -z "$summary" ] || ! echo "$summary" | grep -q 'FAIL=0'; then
+                tail -40 "$log"; echo "   $sim $tb (reference) N=$n FAILED"; exit 1
+            fi
+            echo "   $sim $tb reference N=$n: $summary"
         done
     done
 done

@@ -114,6 +114,70 @@ MUTANTS = {
         ("tiled_matrix_tile_buffer.sv",
          "c_out_last = c_out_valid && (c_out_count == c_total_words - 1);",
          "c_out_last = c_out_valid && (c_out_count == c_total_words - 2);")]),
+    "M31": ("shell reports completion as a level (DONE/IRQ cannot be cleared)", [
+        ("tiled_dma_shell.sv",
+         "assign dma_done  = all_complete && !done_reported_q && !dma_start;",
+         "assign dma_done  = all_complete;")]),
+    "M32": ("illegal descriptor reaches the movers (core wedges BUSY)", [
+        ("tiled_dma_shell.sv",
+         "assign job_accept = dma_start && desc_legal;",
+         "assign job_accept = dma_start;")]),
+    "M33": ("descriptor base-address alignment not checked", [
+        ("tiled_dma_shell.sv",
+         "wire desc_legal = tile_mn_ok && tile_k_ok && dims_ok && align_ok;",
+         "wire desc_legal = tile_mn_ok && tile_k_ok && dims_ok;")]),
+    "M34": ("rejected START still reports a stale DONE", [
+        ("tiled_dma_shell.sv",
+         "done_reported_q  <= !desc_legal;",
+         "done_reported_q  <= 1'b0;")]),
+    "M35": ("per-channel bias column counter never wraps at N", [
+        ("tiled_axi4_gemm_top.sv",
+         "out_col_q <= (32'(out_col_q) + 1 >= shell_n) ? '0 : out_col_q + 1'b1;",
+         "out_col_q <= out_col_q + 1'b1;")]),
+    "M36": ("bias vector writable while a job is running", [
+        ("tiled_axi4_gemm_top.sv",
+         "end else if (reg_wr_en && bias_wr_hit && !shell_job_busy) begin",
+         "end else if (reg_wr_en && bias_wr_hit) begin")]),
+    "M37": ("pipelined engine drains one cycle short (2N-2)", [
+        ("tiled_gemm_engine.sv",
+         "if (drain_count == DRAIN_W'(DRAIN_CYCLES - 1))",
+         "if (drain_count == DRAIN_W'(DRAIN_CYCLES - 2))")]),
+    "M38": ("pipelined engine releases C rows before their last N block", [
+        ("tiled_gemm_engine.sv",
+         "                    feed_k <= 0;\n                    if (last_n_block) begin\n                        rows_ready <= m0_q + tm_len;",
+         "                    feed_k <= 0;\n                    rows_ready <= m0_q + tm_len;\n                    if (last_n_block) begin")]),
+    "M39": ("pipelined engine does not restart K for the next tile", [
+        ("tiled_gemm_engine.sv",
+         "                    feed_k <= 0;\n                    if (last_n_block) begin",
+         "                    if (last_n_block) begin")]),
+    "M40": ("pipelined engine skips clearing accumulators between tiles", [
+        ("tiled_gemm_engine.sv",
+         "wire arr_clear = (state == S_CLEAR) || (state == S_CAPTURE);",
+         "wire arr_clear = (state == S_CLEAR);")]),
+    "M41": ("pipelined engine output ignores row readiness", [
+        ("tiled_gemm_engine.sv",
+         "(out_count < c_total) && (out_row < rows_ready);",
+         "(out_count < c_total);")]),
+    "M42": ("DMA memory port ignores write strobes", [
+        ("axi_dma_mem_port.sv",
+         "if (w_fire && !w_err) mem_we = c_wstrb;",
+         "if (w_fire && !w_err) mem_we = 4'hF;")]),
+    "M43": ("DMA memory port range check lets a burst run one word past RAM", [
+        ("axi_dma_mem_port.sv",
+         "localparam logic [ADDR_W:0] WIN_HI = (ADDR_W+1)'(BASE) + (ADDR_W+1)'(DEPTH) * 4;",
+         "localparam logic [ADDR_W:0] WIN_HI = (ADDR_W+1)'(BASE) + (ADDR_W+1)'(DEPTH) * 4 + 4;")]),
+    "M44": ("DMA memory port skid buffer ignores same-cycle pops (half throughput)", [
+        ("axi_dma_mem_port.sv",
+         "wire [2:0] f_occupancy = {1'b0, f_count} + {2'b00, r_pending} - {2'b00, out_pop};",
+         "wire [2:0] f_occupancy = {1'b0, f_count} + {2'b00, r_pending};")]),
+    "M45": ("DMA memory port read arbiter always prefers A", [
+        ("axi_dma_mem_port.sv",
+         "wire pick_a = a_arvalid && (!b_arvalid || !rr_prefer_b);",
+         "wire pick_a = a_arvalid;")]),
+    "M46": ("DMA memory port writes RAM on an erroring burst", [
+        ("axi_dma_mem_port.sv",
+         "if (w_fire && !w_err) mem_we = c_wstrb;",
+         "if (w_fire) mem_we = c_wstrb;")]),
 }
 
 MUTANT_TB = {
@@ -125,7 +189,13 @@ MUTANT_TB = {
     "M21": "ml_packer", "M22": "ml_core",
     "M23": "formal_read_dma", "M24": "formal_write_dma",
     "M25": "read_dma", "M26": "write_dma", "M27": "scheduler",
-    "M28": "chain", "M29": "tile", "M30": "stream_gemm",
+    "M28": "chain", "M29": "tile", "M30": "stream_gemm:P0",
+    "M31": "axi4_gemm", "M32": "axi4_gemm", "M33": "axi4_gemm", "M34": "axi4_gemm",
+    "M35": "axi4_gemm", "M36": "axi4_gemm",
+    "M37": "stream_gemm", "M38": "axi4_gemm", "M39": "stream_gemm", "M40": "stream_gemm",
+    "M41": "axi4_gemm",
+    "M42": "mem_port", "M43": "mem_port", "M44": "mem_port", "M45": "mem_port",
+    "M46": "mem_port",
 }
 
 
